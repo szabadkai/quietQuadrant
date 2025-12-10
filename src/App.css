@@ -32,6 +32,7 @@ canvas {
   flex-direction: column;
   gap: 10px;
   pointer-events: none;
+  z-index: 2;
 }
 
 .hud-row {
@@ -102,8 +103,13 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 8;
   background: radial-gradient(circle at 50% 24%, rgba(120, 243, 255, 0.08), transparent 42%),
     rgba(2, 5, 8, 0.86);
+}
+
+.overlay.pause-menu {
+  z-index: 12;
 }
 
 .panel {
@@ -316,6 +322,7 @@ button.tiny {
   right: 12px;
   display: flex;
   gap: 6px;
+  z-index: 5;
 }
 
 .settings-grid {
@@ -374,6 +381,7 @@ button.tiny {
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  z-index: 4;
 }
 
 .wave-countdown__card {

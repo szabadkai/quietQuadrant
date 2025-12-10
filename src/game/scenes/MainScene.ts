@@ -353,6 +353,13 @@ export class MainScene extends Phaser.Scene {
   }
 
   private setupCollisions() {
+    this.physics.add.collider(
+      this.enemies,
+      this.enemies,
+      (a, b) => this.handleEnemyCollide(a as Phaser.Physics.Arcade.Image, b as Phaser.Physics.Arcade.Image),
+      undefined,
+      this
+    );
     this.physics.add.overlap(
       this.bullets,
       this.enemies,
@@ -571,6 +578,31 @@ export class MainScene extends Phaser.Scene {
         enemy.setVelocity(0, 0);
       }
     });
+  }
+
+  private handleEnemyCollide(enemyA: Phaser.Physics.Arcade.Image, enemyB: Phaser.Physics.Arcade.Image) {
+    const bodyA = enemyA.body as Phaser.Physics.Arcade.Body | null;
+    const bodyB = enemyB.body as Phaser.Physics.Arcade.Body | null;
+    if (!bodyA || !bodyB) return;
+
+    // Skip nudging the boss so it stays anchored.
+    if (enemyA.getData("kind") === "boss" || enemyB.getData("kind") === "boss") {
+      return;
+    }
+
+    // Apply a gentle impulse so clumps loosen rather than sticking together.
+    const dx = bodyA.x - bodyB.x;
+    const dy = bodyA.y - bodyB.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq === 0) return;
+    const dist = Math.sqrt(distSq);
+    const strength = 40;
+    const nx = dx / dist;
+    const ny = dy / dist;
+    bodyA.velocity.x += nx * strength;
+    bodyA.velocity.y += ny * strength;
+    bodyB.velocity.x -= nx * strength;
+    bodyB.velocity.y -= ny * strength;
   }
 
   private handleXpAttraction(dt: number) {
@@ -970,6 +1002,7 @@ export class MainScene extends Phaser.Scene {
     enemy.setData("nextFire", this.time.now + Phaser.Math.Between(400, 1200));
     const enemyBody = enemy.body as Phaser.Physics.Arcade.Body;
     enemyBody.setSize(enemy.displayWidth, enemy.displayHeight, true);
+    enemyBody.setBounce(0.4, 0.4);
     enemyBody.enable = false;
     enemy.setVelocity(0, 0);
     if (elite) {
@@ -1002,6 +1035,7 @@ export class MainScene extends Phaser.Scene {
     this.bossNextPatternAt = this.time.now + 1500 / this.difficulty;
     const bossBody = this.boss.body as Phaser.Physics.Arcade.Body;
     bossBody.setSize(this.boss.displayWidth, this.boss.displayHeight, true);
+    bossBody.setImmovable(true);
   }
 
   private handlePlayerDamage(_source: Phaser.Physics.Arcade.Image, amount: number, isContact: boolean) {

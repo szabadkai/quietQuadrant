@@ -19,6 +19,7 @@ import { WaveCountdown } from "./ui/components/WaveCountdown";
 
 function App() {
   const screen = useUIStore((s) => s.screen);
+  const pauseOpen = useUIStore((s) => s.pauseMenuOpen);
   const { setScreen, openSettings } = useUIStore((s) => s.actions);
 
   useEffect(() => {
@@ -89,20 +90,39 @@ function App() {
   useEffect(() => {
     const { openPause: onOpenPause, closePause: onClosePause } = useUIStore.getState().actions;
     const onKeyDown = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape") {
-        const runState = useRunStore.getState().status;
-        if (runState === "paused") {
-          onClosePause();
-          gameManager.resume();
-        } else if (runState === "running") {
-          onOpenPause();
-          gameManager.pause();
-        }
+      if (ev.key !== "Escape") return;
+
+      const pauseOpen = useUIStore.getState().pauseMenuOpen;
+      if (pauseOpen) {
+        onClosePause();
+        gameManager.resume();
+        return;
+      }
+
+      const runState = useRunStore.getState().status;
+      if (runState === "running") {
+        onOpenPause();
+        gameManager.pause();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (pauseOpen) {
+      gameManager.pause();
+      useRunStore.getState().actions.setStatus("paused");
+      return;
+    }
+
+    const runState = useRunStore.getState().status;
+    const uiScreen = useUIStore.getState().screen;
+    if (runState === "paused" && uiScreen === "inGame") {
+      gameManager.resume();
+      useRunStore.getState().actions.setStatus("running");
+    }
+  }, [pauseOpen]);
 
   return (
     <div className="app-shell">
