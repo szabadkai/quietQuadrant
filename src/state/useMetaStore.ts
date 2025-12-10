@@ -9,6 +9,8 @@ const defaultSettings: Settings = {
   masterVolume: 0.6,
   musicVolume: 0.5,
   sfxVolume: 0.7,
+  muteAll: false,
+  muteMusic: false,
   lowGraphicsMode: false,
   difficultyMultiplier: 1,
 };

@@ -6,6 +6,7 @@ import {
   UPGRADE_CATALOG,
   getUpgradeDefinition,
 } from "../../config/upgrades";
+import { soundManager } from "../../audio/SoundManager";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
 import { useMetaStore } from "../../state/useMetaStore";
@@ -13,6 +14,10 @@ import type { EnemySpawn, UpgradeDefinition } from "../../models/types";
 import { GAME_EVENT_KEYS, gameEvents } from "../events";
 
 const OBJECT_SCALE = 0.7;
+const XP_ATTRACT_RADIUS = 180;
+const XP_ATTRACT_MIN_SPEED = 320;
+const XP_ATTRACT_MAX_SPEED = 760;
+const XP_ATTRACT_LERP_RATE = 10; // per-second factor for smoothing toward target velocity
 
 type PlayerStats = {
   moveSpeed: number;
@@ -141,6 +146,8 @@ export class MainScene extends Phaser.Scene {
     this.handlePlayerMovement(dt);
     this.handleShooting();
     this.handleEnemies();
+    this.cullProjectiles();
+    this.handleXpAttraction(dt);
     this.handleBossPatterns();
     this.handleOverdrive(dt);
     this.handleWaveIntermission(dt);
@@ -386,7 +393,7 @@ export class MainScene extends Phaser.Scene {
   private resetState() {
     const settings = useMetaStore.getState().settings;
     this.lowGraphics = settings.lowGraphicsMode;
-    this.difficulty = settings.difficultyMultiplier ?? 1;
+    this.difficulty = 1;
     this.playerStats = {
       moveSpeed: 240,
       damage: 12,
@@ -506,6 +513,7 @@ export class MainScene extends Phaser.Scene {
     ).normalize();
     const spreadCount = this.playerStats.projectiles;
     const spreadTotal = Math.max(spreadCount - 1, 0);
+    soundManager.playSfx("shoot");
     for (let i = 0; i < spreadCount; i++) {
       const offset = spreadTotal === 0 ? 0 : (i - spreadTotal / 2) * Phaser.Math.DegToRad(6);
       const shotDir = dir.clone().rotate(offset);
@@ -562,6 +570,40 @@ export class MainScene extends Phaser.Scene {
       } else if (kind === "boss") {
         enemy.setVelocity(0, 0);
       }
+    });
+  }
+
+  private handleXpAttraction(dt: number) {
+    if (!this.player) return;
+    const px = this.player.x;
+    const py = this.player.y;
+    const maxDistSq = XP_ATTRACT_RADIUS * XP_ATTRACT_RADIUS;
+    const lerp = Phaser.Math.Clamp(dt * XP_ATTRACT_LERP_RATE, 0, 1);
+
+    this.xpPickups.getChildren().forEach((child) => {
+      const pickup = child as Phaser.Physics.Arcade.Image;
+      if (!pickup.active || !pickup.visible) return;
+
+      const dx = px - pickup.x;
+      const dy = py - pickup.y;
+      const distSq = dx * dx + dy * dy;
+      const body = pickup.body as Phaser.Physics.Arcade.Body;
+      const alreadyMagnetized = pickup.getData("magnetized") === true;
+      if (!alreadyMagnetized && distSq > maxDistSq) return;
+      if (distSq <= maxDistSq) {
+        pickup.setData("magnetized", true);
+      }
+
+      const dist = Math.max(Math.sqrt(distSq), 1);
+      const dirX = dx / dist;
+      const dirY = dy / dist;
+      const proximity = Phaser.Math.Clamp(1 - Math.min(dist, XP_ATTRACT_RADIUS) / XP_ATTRACT_RADIUS, 0, 1);
+      const targetSpeed = Phaser.Math.Linear(XP_ATTRACT_MIN_SPEED, XP_ATTRACT_MAX_SPEED, proximity);
+      const targetVx = dirX * targetSpeed;
+      const targetVy = dirY * targetSpeed;
+
+      body.velocity.x = Phaser.Math.Linear(body.velocity.x, targetVx, lerp);
+      body.velocity.y = Phaser.Math.Linear(body.velocity.y, targetVy, lerp);
     });
   }
 
@@ -693,12 +735,37 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
+  private cullProjectiles() {
+    const margin = 32;
+    const left = this.screenBounds.left - margin;
+    const right = this.screenBounds.right + margin;
+    const top = this.screenBounds.top - margin;
+    const bottom = this.screenBounds.bottom + margin;
+
+    const cull = (group: Phaser.Physics.Arcade.Group) => {
+      group.getChildren().forEach((child) => {
+        const proj = child as Phaser.Physics.Arcade.Image;
+        if (!proj.active || !proj.visible) return;
+        if (proj.x < left || proj.x > right || proj.y < top || proj.y > bottom) {
+          proj.destroy();
+        }
+      });
+    };
+
+    cull(this.bullets);
+    cull(this.enemyBullets);
+  }
+
   private handleEnemyDeath(enemy: Phaser.Physics.Arcade.Image) {
+    const kind = enemy.getData("kind") as string;
+    const x = enemy.x;
+    const y = enemy.y;
     enemy.destroy();
     useRunStore.getState().actions.recordKill();
-    this.dropXp(enemy.x, enemy.y, enemy.getData("kind") as string);
+    this.dropXp(x, y, kind);
+    soundManager.playSfx("enemyDown");
     this.tryDrainHeal();
-    if ((enemy.getData("kind") as string) === "boss") {
+    if (kind === "boss") {
       this.endRun(true);
     }
   }
@@ -740,6 +807,7 @@ export class MainScene extends Phaser.Scene {
   private collectXp(pickup: Phaser.Physics.Arcade.Image) {
     const value = pickup.getData("value") as number;
     pickup.destroy();
+    soundManager.playSfx("xpPickup");
     this.xp += value;
     while (this.xp >= this.nextXpThreshold) {
       this.xp -= this.nextXpThreshold;

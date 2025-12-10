@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import "./App.css";
 import { gameManager } from "./game/GameManager";
 import { GAME_EVENT_KEYS, gameEvents } from "./game/events";
+import { soundManager } from "./audio/SoundManager";
 import type { RunSummary } from "./models/types";
 import { useMetaStore } from "./state/useMetaStore";
 import { useRunStore } from "./state/useRunStore";
@@ -22,6 +23,57 @@ function App() {
 
   useEffect(() => {
     useMetaStore.getState().actions.hydrateFromPersistence();
+  }, []);
+
+  useEffect(() => {
+    soundManager.setSettings(useMetaStore.getState().settings);
+    const unsub = useMetaStore.subscribe((state) => {
+      soundManager.setSettings(state.settings);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const armAudio = () => {
+      soundManager.resume();
+      soundManager.startSoundtrack();
+    };
+    window.addEventListener("pointerdown", armAudio, { once: true });
+    window.addEventListener("keydown", armAudio, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", armAudio);
+      window.removeEventListener("keydown", armAudio);
+    };
+  }, []);
+
+  useEffect(() => {
+    let lastHoverButton: HTMLElement | null = null;
+    const onPointerOver = (ev: PointerEvent) => {
+      const target = (ev.target as HTMLElement | null)?.closest("button");
+      if (!target || target === lastHoverButton) return;
+      lastHoverButton = target;
+      soundManager.playSfx("uiHover");
+    };
+    const onPointerOut = (ev: PointerEvent) => {
+      const target = (ev.target as HTMLElement | null)?.closest("button");
+      const next = ev.relatedTarget as Node | null;
+      if (target && target === lastHoverButton && (!next || !target.contains(next))) {
+        lastHoverButton = null;
+      }
+    };
+    const onClick = (ev: MouseEvent) => {
+      const target = (ev.target as HTMLElement | null)?.closest("button");
+      if (!target) return;
+      soundManager.playSfx("uiSelect");
+    };
+    document.addEventListener("pointerover", onPointerOver);
+    document.addEventListener("pointerout", onPointerOut);
+    document.addEventListener("click", onClick);
+    return () => {
+      document.removeEventListener("pointerover", onPointerOver);
+      document.removeEventListener("pointerout", onPointerOut);
+      document.removeEventListener("click", onClick);
+    };
   }, []);
 
   useEffect(() => {

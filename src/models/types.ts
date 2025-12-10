@@ -28,6 +28,8 @@ export interface Settings {
   masterVolume: number;
   musicVolume: number;
   sfxVolume: number;
+  muteAll: boolean;
+  muteMusic: boolean;
   lowGraphicsMode: boolean;
   difficultyMultiplier: number;
 }

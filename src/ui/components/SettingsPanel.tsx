@@ -11,7 +11,6 @@ export const SettingsPanel = () => {
 
   const sliders = useMemo(
     () => [
-      { key: "difficultyMultiplier" as const, label: "Difficulty (Speed)", min: 0.6, max: 1.5, step: 0.05, format: (v: number) => `${Math.round(v * 100)}%` },
       { key: "masterVolume" as const, label: "Master", min: 0, max: 1, step: 0.05, format: (v: number) => `${Math.round(v * 100)}%` },
       { key: "musicVolume" as const, label: "Music", min: 0, max: 1, step: 0.05, format: (v: number) => `${Math.round(v * 100)}%` },
       { key: "sfxVolume" as const, label: "SFX", min: 0, max: 1, step: 0.05, format: (v: number) => `${Math.round(v * 100)}%` },
@@ -26,6 +25,28 @@ export const SettingsPanel = () => {
       <div className="panel">
         <div className="panel-header">Settings</div>
         <div className="settings-grid">
+          <div className="setting-row">
+            <div className="label">Mute All</div>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={settings.muteAll}
+                onChange={(e) => updateSettings({ muteAll: e.target.checked })}
+              />
+              <span>Silence all game audio</span>
+            </label>
+          </div>
+          <div className="setting-row">
+            <div className="label">Mute Music</div>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={settings.muteMusic}
+                onChange={(e) => updateSettings({ muteMusic: e.target.checked })}
+              />
+              <span>Silence soundtrack only</span>
+            </label>
+          </div>
           {sliders.map((slider) => (
             <div key={slider.key} className="setting-row">
               <div className="label">{slider.label}</div>
