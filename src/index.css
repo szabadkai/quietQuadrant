@@ -1,0 +1,25 @@
+:root {
+  font-family: "Inter Tight", "Segoe UI", system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  color: #e5e9f2;
+  background-color: #05070c;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at 30% 20%, rgba(70, 90, 130, 0.08), transparent 40%),
+    radial-gradient(circle at 80% 60%, rgba(255, 255, 255, 0.05), transparent 36%),
+    #05070c;
+}
+
+button {
+  font-family: inherit;
+}

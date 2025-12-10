@@ -1,0 +1,95 @@
+import type { UpgradeDefinition } from "../models/types";
+
+export const UPGRADE_CATALOG: UpgradeDefinition[] = [
+  {
+    id: "power-shot",
+    name: "Power Shot",
+    description: "Increase primary damage by 12%.",
+    rarity: "common",
+    category: "offense",
+    maxStacks: 8,
+  },
+  {
+    id: "rapid-fire",
+    name: "Rapid Fire",
+    description: "Increase fire rate by 12%.",
+    rarity: "common",
+    category: "offense",
+    maxStacks: 8,
+  },
+  {
+    id: "swift-projectiles",
+    name: "Swift Projectiles",
+    description: "Projectile speed up by 15%.",
+    rarity: "common",
+    category: "offense",
+    maxStacks: 6,
+  },
+  {
+    id: "engine-tune",
+    name: "Engine Tune",
+    description: "Movement speed up by 10%.",
+    rarity: "common",
+    category: "utility",
+    maxStacks: 6,
+  },
+  {
+    id: "plating",
+    name: "Light Plating",
+    description: "+1 max health.",
+    rarity: "common",
+    category: "defense",
+    maxStacks: 5,
+  },
+  {
+    id: "sidecar",
+    name: "Sidecar Shot",
+    description: "+1 extra projectile with a slight spread.",
+    rarity: "common",
+    category: "offense",
+    maxStacks: 3,
+  },
+  {
+    id: "pierce",
+    name: "Piercing Rounds",
+    description: "Projectiles pierce one additional target.",
+    rarity: "common",
+    category: "offense",
+    maxStacks: 3,
+  },
+  {
+    id: "overdrive",
+    name: "Overdrive",
+    description: "Massive fire rate spike after remaining still briefly.",
+    rarity: "rare",
+    category: "offense",
+    maxStacks: 1,
+  },
+  {
+    id: "explosive-impact",
+    name: "Explosive Impact",
+    description: "Projectiles cause small explosions on hit.",
+    rarity: "rare",
+    category: "offense",
+    maxStacks: 2,
+  },
+  {
+    id: "drain",
+    name: "Kinetic Drain",
+    description: "Gain a small heal on kill (cooldown).",
+    rarity: "rare",
+    category: "defense",
+    maxStacks: 1,
+  },
+  {
+    id: "aegis",
+    name: "Reactive Aegis",
+    description: "Brief shield on low health (cooldown).",
+    rarity: "rare",
+    category: "defense",
+    maxStacks: 1,
+  },
+];
+
+export const getUpgradeDefinition = (id: string) =>
+  UPGRADE_CATALOG.find((u) => u.id === id);
