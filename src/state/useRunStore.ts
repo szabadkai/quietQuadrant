@@ -15,11 +15,12 @@ interface RunState {
   playerLevel: number;
   xp: number;
   xpThreshold: number;
+  seedId: string | null;
   intermissionCountdown: number | null;
   upcomingWave: number | null;
   lastRunSummary?: RunSummary;
   actions: {
-    startRun: () => void;
+    startRun: (seedId: string) => void;
     endRun: (summary: RunSummary) => void;
     setWave: (wave: number) => void;
     addUpgrade: (upgrade: UpgradeInstance) => void;
@@ -45,6 +46,7 @@ const defaultState = (): Omit<RunState, "actions"> => ({
   playerLevel: 1,
   xp: 0,
   xpThreshold: 12,
+  seedId: null,
   intermissionCountdown: null,
   upcomingWave: null,
 });
@@ -52,12 +54,13 @@ const defaultState = (): Omit<RunState, "actions"> => ({
 export const useRunStore = create<RunState>()((set, _get) => ({
   ...defaultState(),
   actions: {
-    startRun: () =>
+    startRun: (seedId) =>
       set((state) => ({
         ...state,
         ...defaultState(),
         runId: crypto.randomUUID(),
         status: "running",
+        seedId,
       })),
     endRun: (summary) =>
       set((state) => ({

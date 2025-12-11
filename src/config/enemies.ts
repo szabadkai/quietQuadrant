@@ -25,11 +25,11 @@ const base: Record<EnemyKind, EnemyDefinition> = {
   },
   boss: {
     kind: "boss",
-    speed: 50,
-    health: 1200,
+    speed: 60,
+    health: 1500,
     damage: 25,
-    fireCooldown: 1.2,
-    projectileSpeed: 200,
+    fireCooldown: 1.0,
+    projectileSpeed: 260,
   },
 };
 

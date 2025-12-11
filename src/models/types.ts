@@ -29,6 +29,9 @@ export interface RunSummary {
   bossDefeated: boolean;
   enemiesDestroyed: number;
   upgrades: UpgradeInstance[];
+  seedId: string;
+  bossId?: string;
+  affixId?: string;
 }
 
 export interface Settings {
@@ -68,3 +71,27 @@ export interface UpgradeOption {
   definition: UpgradeDefinition;
   stacks: number;
 }
+
+export interface BossDefinition {
+  id: string;
+  name: string;
+  description: string;
+  tuning: {
+    healthMultiplier?: number;
+    speedMultiplier?: number;
+    fireRateMultiplier?: number;
+    projectileSpeedMultiplier?: number;
+  };
+  patterns: string[];
+}
+
+export interface WeeklyAffix {
+  id: string;
+  name: string;
+  description: string;
+  enemyHealthMultiplier?: number;
+  enemySpeedMultiplier?: number;
+  rareUpgradeBonus?: number;
+}
+
+export type PerSeedBest = Record<string, RunSummary>;

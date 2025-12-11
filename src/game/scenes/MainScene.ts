@@ -7,8 +7,10 @@ import { soundManager } from "../../audio/SoundManager";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
 import { useMetaStore } from "../../state/useMetaStore";
-import type { EnemySpawn, Rarity, UpgradeDefinition } from "../../models/types";
+import type { BossDefinition, EnemySpawn, Rarity, UpgradeDefinition, WeeklyAffix } from "../../models/types";
 import { GAME_EVENT_KEYS, gameEvents } from "../events";
+import { BOSSES } from "../../config/bosses";
+import { Prng } from "../../utils/seed";
 
 const OBJECT_SCALE = 0.7;
 const COLOR_ACCENT = 0x9ff0ff;
@@ -114,6 +116,13 @@ export class MainScene extends Phaser.Scene {
   private screenBounds!: Phaser.Geom.Rectangle;
   private elapsedAccumulator = 0;
   private shieldRing?: Phaser.GameObjects.Arc;
+  private rng = new Prng(1);
+  private seedId = "week-0";
+  private bossTemplate: BossDefinition = BOSSES[0];
+  private affix: WeeklyAffix | null = null;
+  private bossPatternQueue: string[] = [];
+  private bossPatternCursor = 0;
+  private bossSpinAngle = 0;
 
   constructor() {
     super("MainScene");
@@ -133,9 +142,17 @@ export class MainScene extends Phaser.Scene {
     this.setupCollisions();
   }
 
-  startNewRun() {
+  startNewRun(seedId: string, seedValue: number, affix?: WeeklyAffix, bossOverride?: BossDefinition) {
+    this.seedId = seedId;
+    this.rng = new Prng(seedValue);
+    const bossPool = BOSSES.length > 0 ? BOSSES : [this.bossTemplate];
+    this.bossTemplate = bossOverride ?? bossPool[this.rng.nextInt(bossPool.length)];
+    this.affix = affix ?? null;
+    this.bossPatternQueue = this.shuffle(this.bossTemplate.patterns);
+    this.bossPatternCursor = 0;
+    this.bossSpinAngle = 0;
     this.physics.world.resume();
-    useRunStore.getState().actions.startRun();
+    useRunStore.getState().actions.startRun(seedId);
     this.resetState();
     useUIStore.getState().actions.setScreen("inGame");
     gameEvents.emit(GAME_EVENT_KEYS.runStarted);
@@ -152,6 +169,32 @@ export class MainScene extends Phaser.Scene {
       this.physics.world.resume();
       useRunStore.getState().actions.setStatus("running");
     }
+  }
+
+  private randBetween(min: number, max: number) {
+    if (max <= min) return min;
+    const span = max - min + 1;
+    return Math.floor(this.rng.next() * span) + min;
+  }
+
+  private randFloat(min: number, max: number) {
+    return this.rng.next() * (max - min) + min;
+  }
+
+  private shuffle<T>(items: T[]): T[] {
+    const arr = [...items];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = this.rng.nextInt(i + 1);
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  private randChoice<T>(items: T[]): T {
+    if (items.length === 0) {
+      throw new Error("randChoice called with empty array");
+    }
+    return items[this.rng.nextInt(items.length)];
   }
 
   private handleExplosiveImpact(
@@ -745,7 +788,7 @@ export class MainScene extends Phaser.Scene {
     const baseDir = dashDir.lengthSq() > 0 ? dashDir.clone().normalize() : new Phaser.Math.Vector2(1, 0);
     for (let i = 0; i < this.dashSparkConfig.shards; i++) {
       const arcAngle = (i / this.dashSparkConfig.shards) * Math.PI * 2;
-      const jitter = Phaser.Math.FloatBetween(-0.15, 0.15);
+      const jitter = this.randFloat(-0.15, 0.15);
       const dir = baseDir.clone().rotate(arcAngle + jitter);
       this.spawnBullet({
         x: origin.x,
@@ -980,31 +1023,174 @@ export class MainScene extends Phaser.Scene {
 
   private fireBossPattern() {
     if (!this.boss) return;
-    const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-    if (this.bossPhase === 1) {
-      for (let i = 0; i < 10; i++) {
-        const angle = Phaser.Math.DegToRad((360 / 10) * i);
-        const dir = new Phaser.Math.Vector2(Math.cos(angle), Math.sin(angle));
-        this.spawnEnemyBullet(center.x, center.y, dir, 220 * this.difficulty);
-      }
-      this.bossNextPatternAt = this.time.now + 1600 / this.difficulty;
-    } else if (this.bossPhase === 2) {
-      const target = new Phaser.Math.Vector2(this.player!.x, this.player!.y).subtract(center).normalize();
-      for (let i = -2; i <= 2; i++) {
-        const dir = target.clone().rotate(Phaser.Math.DegToRad(i * 12));
-        this.spawnEnemyBullet(center.x, center.y, dir, 240 * this.difficulty);
-      }
-      this.bossNextPatternAt = this.time.now + 1200 / this.difficulty;
-    } else {
-      for (let ring = 0; ring < 2; ring++) {
-        for (let i = 0; i < 16; i++) {
-          const angle = Phaser.Math.DegToRad((360 / 16) * i + ring * 8);
-          const dir = new Phaser.Math.Vector2(Math.cos(angle), Math.sin(angle));
-          this.spawnEnemyBullet(center.x, center.y, dir, (260 + ring * 40) * this.difficulty);
-        }
-      }
-      this.bossNextPatternAt = this.time.now + 1000 / this.difficulty;
+    const pattern = this.nextBossPattern();
+    switch (pattern) {
+      case "beam-spin":
+        this.bossPatternBeamSpin();
+        break;
+      case "aimed-burst":
+        this.bossPatternAimedBurst();
+        break;
+      case "ring-with-gap":
+        this.bossPatternRingWithGap();
+        break;
+      case "summon-minions":
+        this.bossPatternSummonMinions();
+        break;
+      case "cone-volley":
+        this.bossPatternConeVolley();
+        break;
+      case "pulse-ring":
+        this.bossPatternPulseRing();
+        break;
+      case "slam":
+        this.bossPatternSlam();
+        break;
+      case "ricochet-shards":
+        this.bossPatternShardSpray();
+        break;
+      case "lane-beams":
+        this.bossPatternLaneBeams();
+        break;
+      default:
+        this.bossPatternRingWithGap();
+        break;
     }
+  }
+
+  private nextBossPattern() {
+    if (this.bossPatternQueue.length === 0) {
+      this.bossPatternQueue = this.shuffle(this.bossTemplate.patterns);
+      this.bossPatternCursor = 0;
+      if (this.bossPatternQueue.length === 0) {
+        return "ring-with-gap";
+      }
+    }
+    const pattern = this.bossPatternQueue[this.bossPatternCursor % this.bossPatternQueue.length];
+    this.bossPatternCursor++;
+    return pattern;
+  }
+
+  private bossPatternRingWithGap() {
+    if (!this.boss) return;
+    const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
+    const total = 22;
+    const gapStart = this.randFloat(0, Math.PI * 2);
+    const gapWidth = Math.PI / 9;
+    for (let i = 0; i < total; i++) {
+      const angle = (Math.PI * 2 * i) / total;
+      const diff = Math.abs(((angle - gapStart + Math.PI * 2) % (Math.PI * 2)) - Math.PI);
+      if (diff < gapWidth) continue;
+      const dir = new Phaser.Math.Vector2(Math.cos(angle), Math.sin(angle));
+      this.spawnEnemyBullet(center.x, center.y, dir, 280 * this.difficulty);
+    }
+    this.bossNextPatternAt = this.time.now + 1100 / this.difficulty;
+  }
+
+  private bossPatternAimedBurst() {
+    if (!this.boss || !this.player) return;
+    const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
+    const target = new Phaser.Math.Vector2(this.player.x, this.player.y).subtract(center).normalize();
+    const spread = Phaser.Math.DegToRad(8);
+    for (let i = -3; i <= 3; i++) {
+      const dir = target.clone().rotate(spread * i);
+      this.spawnEnemyBullet(center.x, center.y, dir, 300 * this.difficulty);
+    }
+    this.bossNextPatternAt = this.time.now + 950 / this.difficulty;
+  }
+
+  private bossPatternBeamSpin() {
+    if (!this.boss) return;
+    const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
+    this.bossSpinAngle += Phaser.Math.DegToRad(22);
+    const total = 14;
+    for (let i = 0; i < total; i++) {
+      const angle = this.bossSpinAngle + (Math.PI * 2 * i) / total;
+      const dir = new Phaser.Math.Vector2(Math.cos(angle), Math.sin(angle));
+      this.spawnEnemyBullet(center.x, center.y, dir, 250 * this.difficulty);
+    }
+    this.bossNextPatternAt = this.time.now + 780 / this.difficulty;
+  }
+
+  private bossPatternSummonMinions() {
+    const choices: EnemySpawn[] = [
+      { kind: "drifter", count: this.randBetween(3, 4) },
+      { kind: "watcher", count: this.randBetween(1, 2) },
+      { kind: "mass", count: 1, elite: this.rng.next() < 0.35 },
+    ];
+    const pick = this.randChoice(choices);
+    this.spawnWaveEnemies([pick]);
+    this.bossNextPatternAt = this.time.now + 1400 / this.difficulty;
+  }
+
+  private bossPatternConeVolley() {
+    if (!this.boss || !this.player) return;
+    const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
+    const target = new Phaser.Math.Vector2(this.player.x, this.player.y).subtract(center).normalize();
+    const spread = Phaser.Math.DegToRad(6);
+    for (let i = -4; i <= 4; i++) {
+      const dir = target.clone().rotate(spread * i);
+      this.spawnEnemyBullet(center.x, center.y, dir, 300 * this.difficulty);
+    }
+    this.bossNextPatternAt = this.time.now + 1100 / this.difficulty;
+  }
+
+  private bossPatternPulseRing() {
+    if (!this.boss) return;
+    const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
+    const fireRing = (offset: number, speed: number) => {
+      for (let i = 0; i < 16; i++) {
+        const angle = offset + (Math.PI * 2 * i) / 16;
+        const dir = new Phaser.Math.Vector2(Math.cos(angle), Math.sin(angle));
+        this.spawnEnemyBullet(center.x, center.y, dir, speed * this.difficulty);
+      }
+    };
+    fireRing(this.randFloat(0, Math.PI * 2), 240);
+    this.time.delayedCall(200, () => fireRing(this.randFloat(0, Math.PI * 2), 280));
+    this.bossNextPatternAt = this.time.now + 1200 / this.difficulty;
+  }
+
+  private bossPatternSlam() {
+    if (!this.boss || !this.player) return;
+    const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
+    const toward = new Phaser.Math.Vector2(this.player.x, this.player.y).subtract(center).normalize();
+    const dir = toward.normalize();
+    this.spawnEnemyBullet(center.x, center.y, dir, 360 * this.difficulty);
+    this.spawnEnemyBullet(center.x, center.y, dir.clone().rotate(0.12), 320 * this.difficulty);
+    this.spawnEnemyBullet(center.x, center.y, dir.clone().rotate(-0.12), 320 * this.difficulty);
+    this.bossNextPatternAt = this.time.now + 1100 / this.difficulty;
+  }
+
+  private bossPatternShardSpray() {
+    if (!this.boss) return;
+    const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
+    for (let i = 0; i < 16; i++) {
+      const angle = (Math.PI * 2 * i) / 16 + this.randFloat(-0.05, 0.05);
+      const dir = new Phaser.Math.Vector2(Math.cos(angle), Math.sin(angle));
+      this.spawnEnemyBullet(center.x, center.y, dir, 300 * this.difficulty);
+    }
+    this.bossNextPatternAt = this.time.now + 900 / this.difficulty;
+  }
+
+  private bossPatternLaneBeams() {
+    if (!this.boss) return;
+    const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
+    const dirs = [
+      new Phaser.Math.Vector2(1, 0),
+      new Phaser.Math.Vector2(-1, 0),
+      new Phaser.Math.Vector2(0, 1),
+      new Phaser.Math.Vector2(0, -1),
+    ];
+    const diagonals = [
+      new Phaser.Math.Vector2(1, 1).normalize(),
+      new Phaser.Math.Vector2(-1, 1).normalize(),
+      new Phaser.Math.Vector2(1, -1).normalize(),
+      new Phaser.Math.Vector2(-1, -1).normalize(),
+    ];
+    [...dirs, ...diagonals].forEach((dir) => {
+      this.spawnEnemyBullet(center.x, center.y, dir, 240 * this.difficulty);
+    });
+    this.bossNextPatternAt = this.time.now + 850 / this.difficulty;
   }
 
   private tryEnemyShot(
@@ -1076,7 +1262,7 @@ export class MainScene extends Phaser.Scene {
     const sourceType = source?.getData("sourceType") as string | undefined;
     if (!opts?.isPulse) {
       let critChance = this.playerStats.critChance;
-      if (Math.random() < critChance) {
+      if (this.rng.next() < critChance) {
         damage *= this.playerStats.critMultiplier;
       }
     }
@@ -1284,8 +1470,8 @@ export class MainScene extends Phaser.Scene {
     pickup.setScale(OBJECT_SCALE);
     pickup.setData("value", kind === "mass" ? 6 : kind === "watcher" ? 4 : 3);
     pickup.setVelocity(
-      Phaser.Math.Between(-40, 40),
-      Phaser.Math.Between(-40, 40)
+      this.randBetween(-40, 40),
+      this.randBetween(-40, 40)
     );
     const body = pickup.body as Phaser.Physics.Arcade.Body;
     const radius = 18 * OBJECT_SCALE;
@@ -1343,7 +1529,7 @@ export class MainScene extends Phaser.Scene {
     if (shards <= 0 || damage <= 0) return;
     const baseDir = new Phaser.Math.Vector2(1, 0);
     for (let i = 0; i < shards; i++) {
-      const angle = Phaser.Math.FloatBetween(-Math.PI / 3, Math.PI / 3);
+      const angle = this.randFloat(-Math.PI / 3, Math.PI / 3);
       const dir = baseDir.clone().rotate(angle);
       this.spawnBullet({
         x: enemy.x,
@@ -1395,7 +1581,7 @@ export class MainScene extends Phaser.Scene {
 
     const pickWeighted = (pool: UpgradeDefinition[]) => {
       const total = pool.reduce((sum, u) => sum + (u.dropWeight ?? 1), 0);
-      let roll = Math.random() * total;
+      let roll = this.rng.next() * total;
       for (const u of pool) {
         roll -= u.dropWeight ?? 1;
         if (roll <= 0) return u;
@@ -1410,9 +1596,12 @@ export class MainScene extends Phaser.Scene {
 
       let targetRarity: Rarity;
       if (hasCommon && hasRare) {
-        const totalOdds = UPGRADE_RARITY_ODDS.common + UPGRADE_RARITY_ODDS.rare;
-        const roll = Math.random() * totalOdds;
-        targetRarity = roll < UPGRADE_RARITY_ODDS.common ? "common" : "rare";
+        const rareBonus = this.affix?.rareUpgradeBonus ?? 0;
+        const commonOdds = UPGRADE_RARITY_ODDS.common;
+        const rareOdds = UPGRADE_RARITY_ODDS.rare * (1 + rareBonus);
+        const totalOdds = commonOdds + rareOdds;
+        const roll = this.rng.next() * totalOdds;
+        targetRarity = roll < commonOdds ? "common" : "rare";
       } else {
         targetRarity = hasCommon ? "common" : "rare";
       }
@@ -1635,7 +1824,17 @@ export class MainScene extends Phaser.Scene {
   }
 
   private spawnWaveEnemies(spawns: EnemySpawn[]) {
-    spawns.forEach((spawn) => {
+    const randomized = spawns.map((spawn) => {
+      if (spawn.kind === "boss") return spawn;
+      const delta = this.randBetween(-1, 1);
+      const count = Math.max(1, spawn.count + delta);
+      const elite =
+        spawn.elite !== undefined
+          ? spawn.elite
+          : this.rng.next() < 0.12 && (spawn.kind === "watcher" || spawn.kind === "mass");
+      return { ...spawn, count, elite };
+    });
+    randomized.forEach((spawn) => {
       if (spawn.kind === "boss") {
         this.spawnBoss();
         return;
@@ -1655,9 +1854,11 @@ export class MainScene extends Phaser.Scene {
     const spawnPos = this.pickPerimeterSpawn();
     enemy.setPosition(spawnPos.x, spawnPos.y);
     const stats = getEnemyDefinition(kind as any, elite);
+    const enemyHealthMult = this.affix?.enemyHealthMultiplier ?? 1;
+    const enemySpeedMult = this.affix?.enemySpeedMultiplier ?? 1;
     enemy.setData("kind", kind);
-    enemy.setData("health", stats.health);
-    enemy.setData("speed", stats.speed * this.difficulty);
+    enemy.setData("health", stats.health * enemyHealthMult);
+    enemy.setData("speed", stats.speed * this.difficulty * enemySpeedMult);
     enemy.setData(
       "fireCooldown",
       stats.fireCooldown ? stats.fireCooldown / this.difficulty : 0
@@ -1666,7 +1867,7 @@ export class MainScene extends Phaser.Scene {
       "projectileSpeed",
       stats.projectileSpeed ? stats.projectileSpeed * this.difficulty : 0
     );
-    enemy.setData("nextFire", this.time.now + Phaser.Math.Between(400, 1200));
+    enemy.setData("nextFire", this.time.now + this.randBetween(400, 1200));
     const enemyBody = enemy.body as Phaser.Physics.Arcade.Body;
     enemyBody.setSize(enemy.displayWidth, enemy.displayHeight, true);
     enemyBody.setBounce(0.4, 0.4);
@@ -1688,17 +1889,20 @@ export class MainScene extends Phaser.Scene {
     this.boss.setScale(OBJECT_SCALE);
     this.boss.setData("kind", "boss");
     const base = getEnemyDefinition("boss");
-    this.bossMaxHealth = base.health;
-    this.boss.setData("health", base.health);
-    this.boss.setData("speed", base.speed * this.difficulty);
-    this.boss.setData(
-      "fireCooldown",
-      base.fireCooldown ? base.fireCooldown / this.difficulty : 1.2 / this.difficulty
-    );
-    this.boss.setData(
-      "projectileSpeed",
-      base.projectileSpeed ? base.projectileSpeed * this.difficulty : 0
-    );
+    const tuning = this.bossTemplate?.tuning ?? {};
+    const health = base.health * (tuning.healthMultiplier ?? 1);
+    const speed = base.speed * (tuning.speedMultiplier ?? 1);
+    const fireCooldownBase = base.fireCooldown ?? 1.2;
+    const fireRateMultiplier = tuning.fireRateMultiplier ?? 1;
+    const projSpeedBase = base.projectileSpeed ?? 0;
+    const projectileSpeedMultiplier = tuning.projectileSpeedMultiplier ?? 1;
+
+    this.bossMaxHealth = health;
+    this.boss.setData("health", health);
+    this.boss.setData("bossId", this.bossTemplate?.id ?? "boss");
+    this.boss.setData("speed", speed * this.difficulty);
+    this.boss.setData("fireCooldown", fireCooldownBase / (fireRateMultiplier * this.difficulty));
+    this.boss.setData("projectileSpeed", projSpeedBase * projectileSpeedMultiplier * this.difficulty);
     this.bossNextPatternAt = this.time.now + 1500 / this.difficulty;
     const bossBody = this.boss.body as Phaser.Physics.Arcade.Body;
     bossBody.setSize(this.boss.displayWidth, this.boss.displayHeight, true);
@@ -1745,12 +1949,12 @@ export class MainScene extends Phaser.Scene {
   private pickPerimeterSpawn() {
     const margin = 40;
     const edges = [
-      { x: Phaser.Math.Between(this.screenBounds.left, this.screenBounds.right), y: this.screenBounds.top + margin, side: "top" },
-      { x: Phaser.Math.Between(this.screenBounds.left, this.screenBounds.right), y: this.screenBounds.bottom - margin, side: "bottom" },
-      { x: this.screenBounds.left + margin, y: Phaser.Math.Between(this.screenBounds.top, this.screenBounds.bottom), side: "left" },
-      { x: this.screenBounds.right - margin, y: Phaser.Math.Between(this.screenBounds.top, this.screenBounds.bottom), side: "right" },
+      { x: this.randBetween(this.screenBounds.left, this.screenBounds.right), y: this.screenBounds.top + margin, side: "top" as const },
+      { x: this.randBetween(this.screenBounds.left, this.screenBounds.right), y: this.screenBounds.bottom - margin, side: "bottom" as const },
+      { x: this.screenBounds.left + margin, y: this.randBetween(this.screenBounds.top, this.screenBounds.bottom), side: "left" as const },
+      { x: this.screenBounds.right - margin, y: this.randBetween(this.screenBounds.top, this.screenBounds.bottom), side: "right" as const },
     ];
-    return Phaser.Utils.Array.GetRandom(edges);
+    return this.randChoice(edges);
   }
 
   private showSpawnCue(enemy: Phaser.Physics.Arcade.Image) {
@@ -1805,6 +2009,9 @@ export class MainScene extends Phaser.Scene {
       bossDefeated: victory,
       enemiesDestroyed: state.enemiesDestroyed,
       upgrades: state.currentUpgrades,
+      seedId: state.seedId ?? this.seedId,
+      bossId: this.bossTemplate?.id,
+      affixId: this.affix?.id,
     };
     state.actions.setWaveCountdown(null, null);
     state.actions.endRun(summary);

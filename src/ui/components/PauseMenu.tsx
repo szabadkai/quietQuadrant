@@ -1,9 +1,12 @@
 import { useMemo } from "react";
 import { getUpgradeDefinition } from "../../config/upgrades";
 import { gameManager } from "../../game/GameManager";
+import { BOSSES } from "../../config/bosses";
+import { AFFIXES } from "../../config/affixes";
 import { useMetaStore } from "../../state/useMetaStore";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
+import { useEffect, useState } from "react";
 
 export const PauseMenu = () => {
   const pauseOpen = useUIStore((s) => s.pauseMenuOpen);
@@ -12,6 +15,7 @@ export const PauseMenu = () => {
   const currentUpgrades = useRunStore((s) => s.currentUpgrades);
   const settings = useMetaStore((s) => s.settings);
   const { updateSettings } = useMetaStore((s) => s.actions);
+  const [seasonInfo, setSeasonInfo] = useState(() => gameManager.getSeasonInfo());
 
   const loadout = currentUpgrades
     .map((u) => ({ def: getUpgradeDefinition(u.id), stacks: u.stacks }))
@@ -25,6 +29,10 @@ export const PauseMenu = () => {
     ],
     []
   );
+
+  useEffect(() => {
+    setSeasonInfo(gameManager.getSeasonInfo());
+  }, []);
 
   if (!pauseOpen) return null;
 
@@ -71,6 +79,26 @@ export const PauseMenu = () => {
             Main Menu
           </button>
         </div>
+
+        {seasonInfo && (
+          <div className="pause-season">
+            <div className="subheader">Weekly Seed</div>
+            <div className="pill-row">
+              <span className="pill">Seed {seasonInfo.seedId}</span>
+              {seasonInfo.boss && (
+                <span className="pill">
+                  Boss: {BOSSES.find((b) => b.id === seasonInfo.boss?.id)?.name ?? seasonInfo.boss?.id}
+                </span>
+              )}
+              {seasonInfo.affix && (
+                <span className="pill">
+                  Affix: {AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ?? seasonInfo.affix?.id}
+                </span>
+              )}
+            </div>
+            {seasonInfo.affix?.description && <div className="note">{seasonInfo.affix.description}</div>}
+          </div>
+        )}
 
         {loadout.length > 0 && (
           <div className="pause-loadout">

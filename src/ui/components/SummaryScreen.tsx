@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { gameManager } from "../../game/GameManager";
+import { BOSSES } from "../../config/bosses";
+import { AFFIXES } from "../../config/affixes";
 import { useMetaStore } from "../../state/useMetaStore";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
@@ -7,6 +9,7 @@ import { useUIStore } from "../../state/useUIStore";
 export const SummaryScreen = () => {
   const lastRun = useRunStore((s) => s.lastRunSummary);
   const bestRun = useMetaStore((s) => s.bestRun);
+  const bestRunsBySeed = useMetaStore((s) => s.bestRunsBySeed);
   const { setScreen } = useUIStore((s) => s.actions);
   const isVictory = lastRun?.bossDefeated;
 
@@ -22,6 +25,8 @@ export const SummaryScreen = () => {
   }, [lastRun]);
 
   if (!lastRun) return null;
+
+  const seedBest = lastRun.seedId ? bestRunsBySeed[lastRun.seedId] : undefined;
 
   return (
     <div className={`overlay summary-screen ${isVictory ? "is-victory" : ""}`}>
@@ -49,6 +54,11 @@ export const SummaryScreen = () => {
             <div className="metric">{lastRun.enemiesDestroyed}</div>
           </div>
         </div>
+        <div className="note">
+          Seed: {lastRun.seedId}
+          {lastRun.bossId ? ` · Boss: ${BOSSES.find((b) => b.id === lastRun.bossId)?.name ?? lastRun.bossId}` : ""}
+          {lastRun.affixId ? ` · Affix: ${AFFIXES.find((a) => a.id === lastRun.affixId)?.name ?? lastRun.affixId}` : ""}
+        </div>
         <div className="upgrades-list">
           <div className="label">Upgrades</div>
           <div className="pill-row">
@@ -62,6 +72,11 @@ export const SummaryScreen = () => {
         {bestRun && (
           <div className="note">
             Best: Wave {bestRun.wavesCleared} · {Math.floor(bestRun.durationSeconds)}s
+          </div>
+        )}
+        {seedBest && seedBest.runId !== lastRun.runId && (
+          <div className="note">
+            Weekly best (Seed {lastRun.seedId}): Wave {seedBest.wavesCleared} · {Math.floor(seedBest.durationSeconds)}s
           </div>
         )}
         <div className="actions">

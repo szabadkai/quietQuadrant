@@ -1,10 +1,18 @@
 import Phaser from "phaser";
 import { createGameConfig } from "./GameConfig";
 import { MainScene } from "./scenes/MainScene";
+import { getWeeklySeed, hashSeed, Prng, pickFromList } from "../utils/seed";
+import { AFFIXES } from "../config/affixes";
+import { BOSSES } from "../config/bosses";
+import type { BossDefinition, WeeklyAffix } from "../models/types";
 
 class GameManager {
   private game?: Phaser.Game;
   private mainScene?: MainScene;
+  private currentAffix?: WeeklyAffix;
+  private seasonSeedId?: string;
+  private seasonSeedValue?: number;
+  private seasonBoss?: BossDefinition;
 
   init(containerId: string) {
     if (this.game) return;
@@ -13,11 +21,28 @@ class GameManager {
     this.game = new Phaser.Game(config);
   }
 
-  startRun() {
+  private ensureSeason(seedId?: string) {
+    const weekly = getWeeklySeed();
+    const finalSeedId = seedId ?? this.seasonSeedId ?? weekly.seedId;
+    const seedValue = (seedId ? hashSeed(seedId) : this.seasonSeedValue ?? weekly.seedValue) || 1;
+    if (this.seasonSeedId === finalSeedId && this.seasonSeedValue === seedValue && this.currentAffix && this.seasonBoss) {
+      return;
+    }
+    const affixRng = new Prng(seedValue ^ 0x9e3779b9);
+    this.currentAffix = pickFromList(AFFIXES, affixRng);
+    const bossRng = new Prng(seedValue);
+    this.seasonBoss = BOSSES[bossRng.nextInt(BOSSES.length)] ?? BOSSES[0];
+    this.seasonSeedId = finalSeedId;
+    this.seasonSeedValue = seedValue;
+  }
+
+  startRun(seedId?: string) {
     if (!this.game) {
       this.init("game-root");
     }
-    this.mainScene?.startNewRun();
+    this.ensureSeason(seedId);
+    if (!this.seasonSeedId || !this.seasonSeedValue) return;
+    this.mainScene?.startNewRun(this.seasonSeedId, this.seasonSeedValue, this.currentAffix, this.seasonBoss);
   }
 
   applyUpgrade(id: string) {
@@ -38,6 +63,15 @@ class GameManager {
   resume() {
     if (!this.game) return;
     this.mainScene?.setPaused(false);
+  }
+
+  getSeasonInfo() {
+    this.ensureSeason();
+    return {
+      seedId: this.seasonSeedId,
+      boss: this.seasonBoss,
+      affix: this.currentAffix,
+    };
   }
 }
 
