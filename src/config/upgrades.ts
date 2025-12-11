@@ -91,7 +91,7 @@ export const UPGRADE_BLUEPRINTS: UpgradeDefinition[] = [
   {
     id: "dash-sparks",
     name: "Dash Sparks",
-    description: "Dashing drops 3 short-lived bolts along your path.",
+    description: "Dashing detonates a close-range shrapnel burst.",
     rarity: "common",
     category: "utility",
     maxStacks: 3,

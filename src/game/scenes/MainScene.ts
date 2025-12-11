@@ -2,15 +2,12 @@ import Phaser from "phaser";
 import { GAME_HEIGHT, GAME_WIDTH } from "../GameConfig";
 import { WAVES } from "../../config/waves";
 import { getEnemyDefinition } from "../../config/enemies";
-import {
-  UPGRADE_CATALOG,
-  getUpgradeDefinition,
-} from "../../config/upgrades";
+import { UPGRADE_CATALOG, UPGRADE_RARITY_ODDS, getUpgradeDefinition } from "../../config/upgrades";
 import { soundManager } from "../../audio/SoundManager";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
 import { useMetaStore } from "../../state/useMetaStore";
-import type { EnemySpawn, UpgradeDefinition } from "../../models/types";
+import type { EnemySpawn, Rarity, UpgradeDefinition } from "../../models/types";
 import { GAME_EVENT_KEYS, gameEvents } from "../events";
 
 const OBJECT_SCALE = 0.7;
@@ -72,6 +69,7 @@ export class MainScene extends Phaser.Scene {
   private chargeState = { ready: false, holdMs: 0, damageBonus: 0.9, sizeBonus: 0.2, idleMs: 1000 };
   private capacitorConfig = { stacks: 0, idleMs: 1000, damageBonus: 0.9, sizeBonus: 0.2, chargePierceBonus: 0 };
   private afterimageConfig = { stacks: 0, trailShots: 0, shotDamage: 0 };
+  private dashSparkConfig = { stacks: 0, shards: 0, damage: 0 };
   private shieldConfig = { stacks: 0, shieldHp: 60, durationMs: 0, cooldownMs: 0, activeUntil: 0, hp: 0, nextReadyAt: 0 };
   private explosiveConfig = { stacks: 0, radius: 0, damageMultiplier: 0 };
   private splitConfig = { enabled: false, forks: 2, spreadDegrees: 12, damageMultiplier: 0.5 };
@@ -458,6 +456,7 @@ export class MainScene extends Phaser.Scene {
     this.chargeState = { ready: false, holdMs: 0, damageBonus: 0.9, sizeBonus: 0.2, idleMs: 1000 };
     this.capacitorConfig = { stacks: 0, idleMs: 1000, damageBonus: 0.9, sizeBonus: 0.2, chargePierceBonus: 0 };
     this.afterimageConfig = { stacks: 0, trailShots: 0, shotDamage: 0 };
+    this.dashSparkConfig = { stacks: 0, shards: 0, damage: 0 };
     this.shieldConfig = { stacks: 0, shieldHp: 60, durationMs: 0, cooldownMs: 0, activeUntil: 0, hp: 0, nextReadyAt: 0 };
     this.explosiveConfig = { stacks: 0, radius: 0, damageMultiplier: 0 };
     this.splitConfig = { enabled: false, forks: 2, spreadDegrees: 12, damageMultiplier: 0.5 };
@@ -610,6 +609,7 @@ export class MainScene extends Phaser.Scene {
     this.ability.nextDashAt = this.time.now + this.ability.dashCooldownMs;
     this.spawnDashTrail(new Phaser.Math.Vector2(this.player!.x, this.player!.y), dashDir);
     this.spawnAfterimageShots(dashDir);
+    this.spawnDashSparkExplosion(new Phaser.Math.Vector2(this.player!.x, this.player!.y), dashDir);
   }
 
   private handleShooting() {
@@ -738,6 +738,28 @@ export class MainScene extends Phaser.Scene {
         sourceType: "afterimage",
       });
     }
+  }
+
+  private spawnDashSparkExplosion(origin: Phaser.Math.Vector2, dashDir: Phaser.Math.Vector2) {
+    if (this.dashSparkConfig.shards <= 0 || this.dashSparkConfig.damage <= 0) return;
+    const baseDir = dashDir.lengthSq() > 0 ? dashDir.clone().normalize() : new Phaser.Math.Vector2(1, 0);
+    for (let i = 0; i < this.dashSparkConfig.shards; i++) {
+      const arcAngle = (i / this.dashSparkConfig.shards) * Math.PI * 2;
+      const jitter = Phaser.Math.FloatBetween(-0.15, 0.15);
+      const dir = baseDir.clone().rotate(arcAngle + jitter);
+      this.spawnBullet({
+        x: origin.x,
+        y: origin.y,
+        dir,
+        damage: this.dashSparkConfig.damage,
+        pierce: 0,
+        bounce: 0,
+        tags: ["dash-spark"],
+        charged: false,
+        sourceType: "dash-spark",
+      });
+    }
+    this.spawnBurstVisual(origin.x, origin.y, 34 * OBJECT_SCALE, COLOR_ACCENT, 0.8);
   }
 
   private spawnDashTrail(origin: Phaser.Math.Vector2, dir: Phaser.Math.Vector2) {
@@ -1364,6 +1386,11 @@ export class MainScene extends Phaser.Scene {
       const stacks = this.upgradeStacks[u.id] ?? 0;
       return u.maxStacks ? stacks < u.maxStacks : true;
     });
+    const pools: Record<Rarity, UpgradeDefinition[]> = {
+      common: [],
+      rare: [],
+    };
+    available.forEach((u) => pools[u.rarity].push(u));
     const picks: UpgradeDefinition[] = [];
 
     const pickWeighted = (pool: UpgradeDefinition[]) => {
@@ -1376,9 +1403,26 @@ export class MainScene extends Phaser.Scene {
       return pool[pool.length - 1];
     };
 
-    const pool = available.slice();
     for (let i = 0; i < 3; i++) {
-      if (pool.length === 0) break;
+      const hasCommon = pools.common.length > 0;
+      const hasRare = pools.rare.length > 0;
+      if (!hasCommon && !hasRare) break;
+
+      let targetRarity: Rarity;
+      if (hasCommon && hasRare) {
+        const totalOdds = UPGRADE_RARITY_ODDS.common + UPGRADE_RARITY_ODDS.rare;
+        const roll = Math.random() * totalOdds;
+        targetRarity = roll < UPGRADE_RARITY_ODDS.common ? "common" : "rare";
+      } else {
+        targetRarity = hasCommon ? "common" : "rare";
+      }
+
+      // Fallback if chosen bucket is empty (odds said rare, but none remain).
+      if (pools[targetRarity].length === 0) {
+        targetRarity = targetRarity === "common" ? "rare" : "common";
+      }
+
+      const pool = pools[targetRarity];
       const choice = pickWeighted(pool);
       picks.push(choice);
       pool.splice(pool.indexOf(choice), 1);
@@ -1434,9 +1478,9 @@ export class MainScene extends Phaser.Scene {
       }
       case "dash-sparks": {
         const stacks = this.upgradeStacks[def.id];
-        const trailShots = 3 + (stacks - 1);
-        const shotDamage = 40 * (1 + 0.1 * (stacks - 1));
-        this.afterimageConfig = { stacks, trailShots, shotDamage };
+        const shards = 6 + (stacks - 1) * 2;
+        const damage = this.playerStats.damage * (1.6 + (stacks - 1) * 0.25);
+        this.dashSparkConfig = { stacks, shards, damage };
         break;
       }
       case "held-charge": {
