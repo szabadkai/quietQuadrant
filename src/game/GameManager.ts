@@ -21,10 +21,14 @@ class GameManager {
     this.game = new Phaser.Game(config);
   }
 
-  private ensureSeason(seedId?: string) {
+  private ensureSeason(seedId?: string, forceRandom = false) {
     const weekly = getWeeklySeed();
-    const finalSeedId = seedId ?? this.seasonSeedId ?? weekly.seedId;
-    const seedValue = (seedId ? hashSeed(seedId) : this.seasonSeedValue ?? weekly.seedValue) || 1;
+    const finalSeedId = forceRandom
+      ? `random-${crypto.randomUUID()}`
+      : seedId ?? this.seasonSeedId ?? weekly.seedId;
+    const seedValue = forceRandom
+      ? (crypto.randomUUID().split("-")[0] ?? "1").split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+      : (seedId ? hashSeed(seedId) : this.seasonSeedValue ?? weekly.seedValue) || 1;
     if (this.seasonSeedId === finalSeedId && this.seasonSeedValue === seedValue && this.currentAffix && this.seasonBoss) {
       return;
     }
@@ -36,11 +40,11 @@ class GameManager {
     this.seasonSeedValue = seedValue;
   }
 
-  startRun(seedId?: string) {
+  startRun(seedId?: string, options?: { randomSeed?: boolean }) {
     if (!this.game) {
       this.init("game-root");
     }
-    this.ensureSeason(seedId);
+    this.ensureSeason(seedId, options?.randomSeed);
     if (!this.seasonSeedId || !this.seasonSeedValue) return;
     this.mainScene?.startNewRun(this.seasonSeedId, this.seasonSeedValue, this.currentAffix, this.seasonBoss);
   }

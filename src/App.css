@@ -51,6 +51,13 @@ canvas {
 
 .hud-block.affix-block {
   min-width: 180px;
+  max-width: 220px;
+}
+
+.truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hud-block.compact {

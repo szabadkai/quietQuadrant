@@ -19,6 +19,10 @@ export const TitleScreen = () => {
     gameManager.startRun();
   };
 
+  const startRandom = () => {
+    gameManager.startRun(undefined, { randomSeed: true });
+  };
+
   useEffect(() => {
     setSeasonInfo(gameManager.getSeasonInfo());
   }, []);
@@ -36,6 +40,9 @@ export const TitleScreen = () => {
           <button className="primary" onClick={start}>
             Begin Run
           </button>
+          <button className="ghost" onClick={startRandom}>
+            Random Seed Run
+          </button>
           <button className="ghost" onClick={() => setScreen("howToPlay")}>
             How to Play
           </button>
@@ -46,11 +53,11 @@ export const TitleScreen = () => {
             <div className="season-row">
               <span className="pill">Seed {seasonInfo.seedId}</span>
               {seasonInfo.boss && <span className="pill">Boss: {BOSSES.find((b) => b.id === seasonInfo.boss?.id)?.name ?? seasonInfo.boss.name}</span>}
-              {seasonInfo.affix && <span className="pill">Affix: {AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ?? seasonInfo.affix.name}</span>}
-            </div>
-            {seasonInfo.affix?.description && <div className="note">{seasonInfo.affix.description}</div>}
-            {weeklyBest && (
-              <div className="leaderboard-card">
+            {seasonInfo.affix && <span className="pill">Affix: {AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ?? seasonInfo.affix.name}</span>}
+          </div>
+          {seasonInfo.affix?.description && <div className="note">{seasonInfo.affix.description}</div>}
+          {weeklyBest && (
+            <div className="leaderboard-card">
                 <div className="tiny label">Weekly High Score</div>
                 <div className="metric">Wave {weeklyBest.wavesCleared}</div>
                 <div className="tiny">

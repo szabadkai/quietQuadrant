@@ -13,6 +13,7 @@ export const HUD = () => {
   const xpThreshold = useRunStore((s) => s.xpThreshold);
   const currentWave = useRunStore((s) => s.currentWave);
   const elapsedTime = useRunStore((s) => s.elapsedTime);
+  const currentSeed = useRunStore((s) => s.seedId);
   const [seasonInfo, setSeasonInfo] = useState(() => gameManager.getSeasonInfo());
 
   const healthPct =
@@ -28,7 +29,7 @@ export const HUD = () => {
 
   useEffect(() => {
     setSeasonInfo(gameManager.getSeasonInfo());
-  }, []);
+  }, [currentSeed]);
 
   return (
     <div className="hud">
@@ -66,13 +67,13 @@ export const HUD = () => {
         {seasonInfo && (
           <div className="hud-block compact affix-block">
             <div className="label">Weekly</div>
-            <div className="tiny">Seed {seasonInfo.seedId}</div>
-            <div className="tiny">
+            <div className="tiny truncate">Seed {seasonInfo.seedId}</div>
+            <div className="tiny truncate">
               {seasonInfo.boss
                 ? BOSSES.find((b) => b.id === seasonInfo.boss?.id)?.name ?? seasonInfo.boss.id
                 : "—"}
             </div>
-            <div className="tiny">
+            <div className="tiny truncate">
               {seasonInfo.affix
                 ? AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ?? seasonInfo.affix.id
                 : "—"}
