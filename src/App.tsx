@@ -11,7 +11,6 @@ import { GameCanvas } from "./ui/components/GameCanvas";
 import { HUD } from "./ui/components/HUD";
 import { HowToPlay } from "./ui/components/HowToPlay";
 import { PauseMenu } from "./ui/components/PauseMenu";
-import { SettingsPanel } from "./ui/components/SettingsPanel";
 import { SummaryScreen } from "./ui/components/SummaryScreen";
 import { TitleScreen } from "./ui/components/TitleScreen";
 import { UpgradeOverlay } from "./ui/components/UpgradeOverlay";
@@ -20,7 +19,6 @@ import { WaveCountdown } from "./ui/components/WaveCountdown";
 function App() {
   const screen = useUIStore((s) => s.screen);
   const pauseOpen = useUIStore((s) => s.pauseMenuOpen);
-  const { setScreen, openSettings } = useUIStore((s) => s.actions);
 
   useEffect(() => {
     useMetaStore.getState().actions.hydrateFromPersistence();
@@ -131,25 +129,9 @@ function App() {
       <WaveCountdown />
       <UpgradeOverlay />
       <PauseMenu />
-      <SettingsPanel />
       {screen === "title" && <TitleScreen />}
       {screen === "howToPlay" && <HowToPlay />}
       {screen === "summary" && <SummaryScreen />}
-      <div className="corner">
-        <button className="ghost tiny" onClick={openSettings}>
-          Settings
-        </button>
-        <button
-          className="ghost tiny"
-          onClick={() => {
-            setScreen("title");
-            gameManager.pause();
-            useRunStore.getState().actions.setStatus("paused");
-          }}
-        >
-          Menu
-        </button>
-      </div>
     </div>
   );
 }

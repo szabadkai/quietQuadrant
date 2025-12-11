@@ -14,6 +14,10 @@ import type { EnemySpawn, UpgradeDefinition } from "../../models/types";
 import { GAME_EVENT_KEYS, gameEvents } from "../events";
 
 const OBJECT_SCALE = 0.7;
+const COLOR_ACCENT = 0x9ff0ff;
+const COLOR_CHARGE = 0xf7d46b;
+const COLOR_PULSE = 0xa0f4ff;
+const COLOR_OVERLOAD = 0xffd7a6;
 const XP_ATTRACT_RADIUS = 180;
 const XP_ATTRACT_MIN_SPEED = 320;
 const XP_ATTRACT_MAX_SPEED = 760;
@@ -26,8 +30,11 @@ type PlayerStats = {
   projectileSpeed: number;
   projectiles: number;
   pierce: number;
+  bounce: number;
   maxHealth: number;
   health: number;
+  critChance: number;
+  critMultiplier: number;
 };
 
 type AbilityState = {
@@ -50,8 +57,11 @@ export class MainScene extends Phaser.Scene {
     projectileSpeed: 520,
     projectiles: 1,
     pierce: 0,
+    bounce: 0,
     maxHealth: 5,
     health: 5,
+    critChance: 0.08,
+    critMultiplier: 1.5,
   };
   private ability: AbilityState = {
     dashCooldownMs: 1600,
@@ -59,10 +69,28 @@ export class MainScene extends Phaser.Scene {
     nextDashAt: 0,
     activeUntil: 0,
   };
-  private overdrive = { unlocked: false, active: false, timer: 0 };
-  private explosions = { stacks: 0 };
-  private drain = { unlocked: false, nextHealAt: 0 };
-  private aegis = { unlocked: false, nextReadyAt: 0, activeUntil: 0 };
+  private chargeState = { ready: false, holdMs: 0, damageBonus: 0.9, sizeBonus: 0.2, idleMs: 1000 };
+  private capacitorConfig = { stacks: 0, idleMs: 1000, damageBonus: 0.9, sizeBonus: 0.2, chargePierceBonus: 0 };
+  private slowConfig = { stacks: 0, slowPercent: 0, durationMs: 0 };
+  private overloadConfig = { stacks: 0, damage: 0, radius: 0, cooldownMs: 0, lastTriggerAt: 0 };
+  private vacuumConfig = { stacks: 0, pullStrength: 0, durationMs: 0 };
+  private afterimageConfig = { stacks: 0, trailShots: 0, shotDamage: 0 };
+  private phaseConfig = { stacks: 0, pierce: 0, bounce: 0, damagePenaltyPerPierce: 0 };
+  private threadConfig = { unlocked: false, refundPercent: 0.3, windowMs: 300, nextReadyAt: 0, cooldownMs: 1500 };
+  private forkConfig = { stacks: 0, forks: 0, spreadDegrees: 18, forkDamagePercent: 55 };
+  private edgeConfig = { stacks: 0, chargeExtensionMs: 0, bonusForks: 0, critBonusMultiplier: 0, critChanceBonus: 0 };
+  private shieldConfig = { stacks: 0, shieldHp: 60, durationMs: 0, cooldownMs: 0, activeUntil: 0, hp: 0, nextReadyAt: 0 };
+  private conductiveConfig = { stacks: 0, damage: 0, radius: 0, cooldownMs: 0, nextPulseAt: 0 };
+  private iframeConfig = { unlocked: false, durationMs: 0, cooldownMs: 0, nextReadyAt: 0 };
+  private pulseInheritance = { stacks: 0, potency: 0 };
+  private explosiveConfig = { stacks: 0, radius: 0, damageMultiplier: 0 };
+  private splitConfig = { enabled: false, forks: 2, spreadDegrees: 12, damageMultiplier: 0.5 };
+  private chainArcConfig = { stacks: 0, range: 180, damagePercent: 0.6, cooldownMs: 150, lastAt: 0 };
+  private kineticConfig = { stacks: 0, healAmount: 0.3, cooldownMs: 1200, nextReadyAt: 0 };
+  private momentumConfig = { stacks: 0, ramp: 0.25, timeToMaxMs: 2000, timerMs: 0, bonus: 0 };
+  private spreadConfig = { stacks: 0, spreadDegrees: 6, critBonus: 0 };
+  private projectileScale = 1;
+  private invulnUntil = 0;
   private difficulty = 1;
   private bossMaxHealth = 0;
 
@@ -93,6 +121,7 @@ export class MainScene extends Phaser.Scene {
   private bossNextPatternAt = 0;
   private screenBounds!: Phaser.Geom.Rectangle;
   private elapsedAccumulator = 0;
+  private shieldRing?: Phaser.GameObjects.Arc;
 
   constructor() {
     super("MainScene");
@@ -114,8 +143,8 @@ export class MainScene extends Phaser.Scene {
 
   startNewRun() {
     this.physics.world.resume();
-    this.resetState();
     useRunStore.getState().actions.startRun();
+    this.resetState();
     useUIStore.getState().actions.setScreen("inGame");
     gameEvents.emit(GAME_EVENT_KEYS.runStarted);
     this.runActive = true;
@@ -133,6 +162,20 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
+  private handleExplosiveImpact(
+    projectile: Phaser.Physics.Arcade.Image,
+    enemy: Phaser.Physics.Arcade.Image
+  ) {
+    if (this.explosiveConfig.stacks <= 0) return;
+    const radius = this.explosiveConfig.radius;
+    if (radius <= 0) return;
+    const dmgMultiplier = this.explosiveConfig.damageMultiplier;
+    const damage = (projectile.getData("damage") as number) * dmgMultiplier;
+    const tags = (projectile.getData("tags") as string[] | undefined) ?? [];
+    this.applyAoeDamage(enemy.x, enemy.y, radius, damage, tags, false);
+    this.spawnBurstVisual(enemy.x, enemy.y, radius, COLOR_OVERLOAD, 0.8);
+  }
+
   update(_: number, delta: number) {
     if (!this.runActive || !this.player) return;
     if (useRunStore.getState().status !== "running") return;
@@ -144,13 +187,16 @@ export class MainScene extends Phaser.Scene {
     }
 
     this.handlePlayerMovement(dt);
+    this.updateMomentum(dt);
+    this.updateChargeState(dt);
+    this.tickShieldTimers();
     this.handleShooting();
     this.handleEnemies();
-    this.cullProjectiles();
+    this.handleProjectileBounds();
     this.handleXpAttraction(dt);
     this.handleBossPatterns();
-    this.handleOverdrive(dt);
     this.handleWaveIntermission(dt);
+    this.updateShieldVisual();
 
     if (!this.intermissionActive && this.enemies.countActive(true) === 0 && this.time.now > this.nextWaveCheckAt) {
       if (this.waveIndex < WAVES.length - 1) {
@@ -408,13 +454,34 @@ export class MainScene extends Phaser.Scene {
       projectileSpeed: 520,
       projectiles: 1,
       pierce: 0,
+      bounce: 0,
       maxHealth: 5,
       health: 5,
+      critChance: 0.08,
+      critMultiplier: 1.5,
     };
-    this.overdrive = { unlocked: false, active: false, timer: 0 };
-    this.explosions = { stacks: 0 };
-    this.drain = { unlocked: false, nextHealAt: 0 };
-    this.aegis = { unlocked: false, nextReadyAt: 0, activeUntil: 0 };
+    this.chargeState = { ready: false, holdMs: 0, damageBonus: 0.9, sizeBonus: 0.2, idleMs: 1000 };
+    this.capacitorConfig = { stacks: 0, idleMs: 1000, damageBonus: 0.9, sizeBonus: 0.2, chargePierceBonus: 0 };
+    this.slowConfig = { stacks: 0, slowPercent: 0, durationMs: 0 };
+    this.overloadConfig = { stacks: 0, damage: 0, radius: 0, cooldownMs: 0, lastTriggerAt: 0 };
+    this.vacuumConfig = { stacks: 0, pullStrength: 0, durationMs: 0 };
+    this.afterimageConfig = { stacks: 0, trailShots: 0, shotDamage: 0 };
+    this.phaseConfig = { stacks: 0, pierce: 0, bounce: 0, damagePenaltyPerPierce: 0 };
+    this.threadConfig = { unlocked: false, refundPercent: 0.3, windowMs: 300, nextReadyAt: 0, cooldownMs: 1500 };
+    this.forkConfig = { stacks: 0, forks: 0, spreadDegrees: 18, forkDamagePercent: 55 };
+    this.edgeConfig = { stacks: 0, chargeExtensionMs: 0, bonusForks: 0, critBonusMultiplier: 0, critChanceBonus: 0 };
+    this.shieldConfig = { stacks: 0, shieldHp: 60, durationMs: 0, cooldownMs: 0, activeUntil: 0, hp: 0, nextReadyAt: 0 };
+    this.conductiveConfig = { stacks: 0, damage: 0, radius: 0, cooldownMs: 0, nextPulseAt: 0 };
+    this.iframeConfig = { unlocked: false, durationMs: 0, cooldownMs: 0, nextReadyAt: 0 };
+    this.pulseInheritance = { stacks: 0, potency: 0 };
+    this.explosiveConfig = { stacks: 0, radius: 0, damageMultiplier: 0 };
+    this.splitConfig = { enabled: false, forks: 2, spreadDegrees: 12, damageMultiplier: 0.5 };
+    this.chainArcConfig = { stacks: 0, range: 180, damagePercent: 0.6, cooldownMs: 150, lastAt: 0 };
+    this.kineticConfig = { stacks: 0, healAmount: 0.3, cooldownMs: 1200, nextReadyAt: 0 };
+    this.momentumConfig = { stacks: 0, ramp: 0.25, timeToMaxMs: 2000, timerMs: 0, bonus: 0 };
+    this.spreadConfig = { stacks: 0, spreadDegrees: 6, critBonus: 0 };
+    this.projectileScale = 1;
+    this.invulnUntil = 0;
     this.ability = {
       dashCooldownMs: 1600,
       dashDurationMs: 160,
@@ -427,7 +494,7 @@ export class MainScene extends Phaser.Scene {
     this.nextXpThreshold = 12;
     this.upgradeStacks = {};
     this.pendingUpgradeOptions = [];
-    this.lastShotAt = 0;
+    this.lastShotAt = this.time.now;
     this.nextWaveCheckAt = 0;
     this.intermissionActive = false;
     this.pendingWaveIndex = null;
@@ -451,6 +518,9 @@ export class MainScene extends Phaser.Scene {
     actions.setVitals(this.playerStats.health, this.playerStats.maxHealth);
     actions.setXp(this.level, this.xp, this.nextXpThreshold);
     actions.setWaveCountdown(null, null);
+    if (this.shieldRing) {
+      this.shieldRing.setVisible(false);
+    }
   }
 
   private handlePlayerMovement(_dt: number) {
@@ -496,6 +566,52 @@ export class MainScene extends Phaser.Scene {
     );
   }
 
+  private updateChargeState(dt: number) {
+    if (this.capacitorConfig.stacks === 0) return;
+    const pointerDown =
+      this.input.activePointer?.isDown || this.input.mousePointer?.isDown;
+    if (pointerDown) {
+      this.chargeState.holdMs = Math.min(
+        this.capacitorConfig.idleMs,
+        this.chargeState.holdMs + dt * 1000
+      );
+      if (this.chargeState.holdMs >= this.capacitorConfig.idleMs) {
+        this.chargeState.ready = true;
+      }
+    } else {
+      this.chargeState.holdMs = 0;
+      this.chargeState.ready = false;
+    }
+  }
+
+  private updateMomentum(dt: number) {
+    if (this.momentumConfig.stacks === 0 || !this.player) return;
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
+    const speed = body.velocity.length();
+    const moving = speed > 30;
+    if (moving) {
+      this.momentumConfig.timerMs = Math.min(
+        this.momentumConfig.timeToMaxMs,
+        this.momentumConfig.timerMs + dt * 1000
+      );
+    } else {
+      this.momentumConfig.timerMs = Math.max(0, this.momentumConfig.timerMs - dt * 800);
+    }
+    const ratio = Phaser.Math.Clamp(
+      this.momentumConfig.timerMs / this.momentumConfig.timeToMaxMs,
+      0,
+      1
+    );
+    this.momentumConfig.bonus = this.momentumConfig.ramp * ratio;
+  }
+
+  private tickShieldTimers() {
+    if (this.shieldConfig.hp > 0 && this.time.now > this.shieldConfig.activeUntil) {
+      this.shieldConfig.hp = 0;
+      this.shieldConfig.activeUntil = 0;
+    }
+  }
+
   private tryDash(dir: Phaser.Math.Vector2) {
     if (this.time.now < this.ability.nextDashAt) return;
     const dashDir = dir.lengthSq() > 0 ? dir.clone().normalize() : new Phaser.Math.Vector2(1, 0);
@@ -503,50 +619,219 @@ export class MainScene extends Phaser.Scene {
     body.setVelocity(dashDir.x * this.playerStats.moveSpeed * 3, dashDir.y * this.playerStats.moveSpeed * 3);
     this.ability.activeUntil = this.time.now + this.ability.dashDurationMs;
     this.ability.nextDashAt = this.time.now + this.ability.dashCooldownMs;
+    this.spawnDashTrail(new Phaser.Math.Vector2(this.player!.x, this.player!.y), dashDir);
+    this.spawnAfterimageShots(dashDir);
   }
 
   private handleShooting() {
     if (!this.player) return;
     const pointer = this.input.activePointer;
     if (!pointer.isDown && !this.input.mousePointer?.isDown) return;
-    const effectiveFireRate = this.playerStats.fireRate * (this.overdrive.active ? 1.5 : 1);
-    const cooldown = 1000 / effectiveFireRate;
-    if (this.time.now < this.lastShotAt + cooldown) return;
-    this.lastShotAt = this.time.now;
 
+    const useChargeMode = this.capacitorConfig.stacks > 0;
+    const isCharged = useChargeMode && this.chargeState.ready;
     const dir = new Phaser.Math.Vector2(
       pointer.worldX - this.player.x,
       pointer.worldY - this.player.y
     ).normalize();
     const spreadCount = this.playerStats.projectiles;
-    const spreadTotal = Math.max(spreadCount - 1, 0);
+    const spreadStepDeg = this.spreadConfig.spreadDegrees;
     soundManager.playSfx("shoot");
+    const baseDamage = this.playerStats.damage;
+    const chargeDamageMultiplier = isCharged ? 1 + this.capacitorConfig.damageBonus : 1;
+    const sizeScale = isCharged ? 1 + this.capacitorConfig.sizeBonus : 1;
+    const pierce = this.playerStats.pierce + (isCharged ? this.capacitorConfig.chargePierceBonus : 0);
+    const bounce = this.playerStats.bounce;
+    const tags = this.buildProjectileTags(isCharged);
+    const fireRateBonus = 1 + this.momentumConfig.bonus;
+    const adjustedFireRate = this.playerStats.fireRate * fireRateBonus;
+    const cooldown = 1000 / adjustedFireRate;
+    if (this.time.now < this.lastShotAt + cooldown) return;
+    this.lastShotAt = this.time.now;
+    if (useChargeMode && isCharged) {
+      this.chargeState.ready = false;
+      this.chargeState.holdMs = 0;
+    }
+
     for (let i = 0; i < spreadCount; i++) {
-      const offset = spreadTotal === 0 ? 0 : (i - spreadTotal / 2) * Phaser.Math.DegToRad(6);
+      const offset =
+        spreadCount <= 1
+          ? 0
+          : (i - (spreadCount - 1) / 2) * Phaser.Math.DegToRad(spreadStepDeg);
       const shotDir = dir.clone().rotate(offset);
-      this.spawnBullet(this.player.x, this.player.y, shotDir);
+      this.spawnBullet({
+        x: this.player.x,
+        y: this.player.y,
+        dir: shotDir,
+        damage: baseDamage * chargeDamageMultiplier,
+        pierce,
+        bounce,
+        sizeMultiplier: sizeScale,
+        tags,
+        charged: isCharged,
+        sourceType: "primary",
+      });
+    }
+    if (isCharged) {
+      this.spawnMuzzleFlash(this.player.x, this.player.y);
     }
   }
 
-  private spawnBullet(x: number, y: number, dir: Phaser.Math.Vector2) {
+  private spawnBullet(config: {
+    x: number;
+    y: number;
+    dir: Phaser.Math.Vector2;
+    damage: number;
+    pierce: number;
+    bounce: number;
+    tags: string[];
+    charged?: boolean;
+    sizeMultiplier?: number;
+    sourceType?: string;
+  }) {
     const bullet = this.bullets.get(
-      x,
-      y,
+      config.x,
+      config.y,
       "bullet"
     ) as Phaser.Physics.Arcade.Image;
-    if (!bullet) return;
+    if (!bullet) return null;
+    const sizeScale = (config.sizeMultiplier ?? 1) * this.projectileScale * OBJECT_SCALE;
     bullet.setActive(true);
     bullet.setVisible(true);
-    bullet.setScale(OBJECT_SCALE);
-    (bullet.body as Phaser.Physics.Arcade.Body).setSize(
-      8 * OBJECT_SCALE,
-      24 * OBJECT_SCALE,
+    bullet.setScale(sizeScale);
+    const body = bullet.body as Phaser.Physics.Arcade.Body;
+    body.setSize(
+      8 * sizeScale,
+      24 * sizeScale,
       true
     );
-    bullet.setVelocity(dir.x * this.playerStats.projectileSpeed, dir.y * this.playerStats.projectileSpeed);
-    bullet.setRotation(dir.angle());
-    bullet.setData("pierce", this.playerStats.pierce);
-    bullet.setData("damage", this.playerStats.damage);
+    body.setVelocity(config.dir.x * this.playerStats.projectileSpeed, config.dir.y * this.playerStats.projectileSpeed);
+    bullet.setRotation(config.dir.angle());
+    bullet.setData("pierce", config.pierce);
+    bullet.setData("damage", config.damage);
+    bullet.setData("bounces", config.bounce);
+    bullet.setData("tags", config.tags);
+    bullet.setData("charged", config.charged === true);
+    bullet.setData("sourceType", config.sourceType ?? "primary");
+    bullet.setData("hitCount", 0);
+    bullet.setData("lastHitAt", 0);
+    bullet.setData("canFork", true);
+    bullet.setTint(config.charged ? COLOR_CHARGE : COLOR_ACCENT);
+    return bullet;
+  }
+
+  private buildProjectileTags(isCharged: boolean): string[] {
+    const tags = ["projectile"];
+    if (this.slowConfig.stacks > 0) tags.push("slow", "beam");
+    if (isCharged) tags.push("charge");
+    return tags;
+  }
+
+  private spawnAfterimageShots(dir: Phaser.Math.Vector2) {
+    if (this.afterimageConfig.trailShots <= 0) return;
+    if (!this.player) return;
+    const shots = this.afterimageConfig.trailShots;
+    const spacing = 18;
+    const tags = this.buildProjectileTags(false).concat(["afterimage"]);
+    for (let i = 1; i <= shots; i++) {
+      const offset = dir.clone().scale(-spacing * i);
+      const pos = new Phaser.Math.Vector2(this.player!.x + offset.x, this.player!.y + offset.y);
+      const pierce = this.phaseConfig.pierce;
+      const bounce = this.phaseConfig.bounce;
+      const penalty = this.phaseConfig.damagePenaltyPerPierce;
+      const damagePenalty =
+        pierce > 0 && penalty !== 0 ? Math.max(0.4, 1 + (penalty / 100) * pierce) : 1;
+      this.spawnBullet({
+        x: pos.x,
+        y: pos.y,
+        dir,
+        damage: this.afterimageConfig.shotDamage * damagePenalty,
+        pierce,
+        bounce,
+        tags,
+        charged: false,
+        sourceType: "afterimage",
+      });
+    }
+  }
+
+  private spawnDashTrail(origin: Phaser.Math.Vector2, dir: Phaser.Math.Vector2) {
+    if (this.lowGraphics) return;
+    const length = 42 * OBJECT_SCALE;
+    const width = 6 * OBJECT_SCALE;
+    const angle = dir.angle();
+    const rect = this.add
+      .rectangle(origin.x, origin.y, length, width, COLOR_ACCENT, 0.35)
+      .setRotation(angle)
+      .setDepth(0.6);
+    this.tweens.add({
+      targets: rect,
+      alpha: { from: 0.35, to: 0 },
+      scaleX: { from: 1, to: 0.6 },
+      duration: 180,
+      onComplete: () => rect.destroy(),
+    });
+  }
+
+  private spawnMuzzleFlash(x: number, y: number) {
+    if (this.lowGraphics) return;
+    const flash = this.add.circle(x, y, 10 * OBJECT_SCALE, COLOR_CHARGE, 0.35).setDepth(2);
+    this.tweens.add({
+      targets: flash,
+      scale: { from: 0.6, to: 1.4 },
+      alpha: { from: 0.35, to: 0 },
+      duration: 140,
+      onComplete: () => flash.destroy(),
+    });
+  }
+
+  private spawnBurstVisual(
+    x: number,
+    y: number,
+    radius: number,
+    color: number,
+    strokeOpacity = 0.7
+  ) {
+    if (this.lowGraphics) return;
+    const circle = this.add
+      .circle(x, y, radius, color, 0.08)
+      .setStrokeStyle(2, color, strokeOpacity)
+      .setDepth(0.5);
+    this.tweens.add({
+      targets: circle,
+      alpha: { from: 0.8, to: 0 },
+      scale: { from: 0.9, to: 1.15 },
+      duration: 200,
+      onComplete: () => circle.destroy(),
+    });
+  }
+
+  private spawnVacuumRing(x: number, y: number, radius: number) {
+    if (this.lowGraphics) return;
+    const ring = this.add
+      .circle(x, y, radius, COLOR_PULSE, 0.05)
+      .setStrokeStyle(1, COLOR_PULSE, 0.5)
+      .setDepth(0.4);
+    this.tweens.add({
+      targets: ring,
+      alpha: { from: 0.5, to: 0 },
+      scale: { from: 1, to: 0.85 },
+      duration: 200,
+      onComplete: () => ring.destroy(),
+    });
+  }
+
+  private updateShieldVisual() {
+    if (!this.shieldRing || !this.player) return;
+    const active = this.shieldConfig.hp > 0 && this.time.now <= this.shieldConfig.activeUntil;
+    this.shieldRing.setVisible(active);
+    if (!active) return;
+    this.shieldRing.setPosition(this.player.x, this.player.y);
+    const remaining = this.shieldConfig.activeUntil - this.time.now;
+    const alpha = Phaser.Math.Clamp(remaining / this.shieldConfig.durationMs, 0.3, 0.8);
+    this.shieldRing.setAlpha(alpha);
+    const pulse = 1 + Math.sin(this.time.now / 120) * 0.06;
+    this.shieldRing.setScale(pulse);
   }
 
   private handleEnemies() {
@@ -556,23 +841,28 @@ export class MainScene extends Phaser.Scene {
       if (!enemy.active || !enemy.visible) return;
       const kind = enemy.getData("kind") as string;
       const speed = enemy.getData("speed") as number;
+      const slowUntil = enemy.getData("slowUntil") as number | undefined;
+      const slowFactor =
+        slowUntil && slowUntil > this.time.now
+          ? (enemy.getData("slowFactor") as number | undefined) ?? 1
+          : 1;
       const targetVec = new Phaser.Math.Vector2(player.x - enemy.x, player.y - enemy.y);
       const dist = targetVec.length();
       targetVec.normalize();
 
       if (kind === "drifter") {
-        enemy.setVelocity(targetVec.x * speed, targetVec.y * speed);
+        enemy.setVelocity(targetVec.x * speed * slowFactor, targetVec.y * speed * slowFactor);
       } else if (kind === "watcher") {
         if (dist > 260) {
-          enemy.setVelocity(targetVec.x * speed, targetVec.y * speed);
+          enemy.setVelocity(targetVec.x * speed * slowFactor, targetVec.y * speed * slowFactor);
         } else if (dist < 180) {
-          enemy.setVelocity(-targetVec.x * speed, -targetVec.y * speed);
+          enemy.setVelocity(-targetVec.x * speed * slowFactor, -targetVec.y * speed * slowFactor);
         } else {
           enemy.setVelocity(0, 0);
         }
         this.tryEnemyShot(enemy, player);
       } else if (kind === "mass") {
-        enemy.setVelocity(targetVec.x * speed * 0.7, targetVec.y * speed * 0.7);
+        enemy.setVelocity(targetVec.x * speed * 0.7 * slowFactor, targetVec.y * speed * 0.7 * slowFactor);
         this.tryEnemyShot(enemy, player, true);
       } else if (kind === "boss") {
         enemy.setVelocity(0, 0);
@@ -719,7 +1009,10 @@ export class MainScene extends Phaser.Scene {
     const enemy = target as Phaser.Physics.Arcade.Image;
     const damage = projectile.getData("damage") as number;
     const pierceLeft = projectile.getData("pierce") as number;
+    this.handleThreadNeedle(projectile);
     this.applyDamageToEnemy(enemy, damage, projectile);
+    this.handleForks(projectile, enemy);
+    this.handleExplosiveImpact(projectile, enemy);
 
     if (pierceLeft > 0) {
       projectile.setData("pierce", pierceLeft - 1);
@@ -731,92 +1024,343 @@ export class MainScene extends Phaser.Scene {
   private applyDamageToEnemy(
     enemy: Phaser.Physics.Arcade.Image,
     damage: number,
-    source?: Phaser.Physics.Arcade.Image
+    source?: Phaser.Physics.Arcade.Image,
+    opts?: { tags?: string[]; slowPotencyMultiplier?: number; isPulse?: boolean }
   ) {
+    if (!enemy.active) return;
+    const now = this.time.now;
+    const tags = opts?.tags ?? (source?.getData("tags") as string[] | undefined);
+    const charged = source?.getData("charged") === true;
+    const sourceType = source?.getData("sourceType") as string | undefined;
+    const slowPotency = opts?.slowPotencyMultiplier ?? 1;
+    if (!opts?.isPulse) {
+      let critChance = this.playerStats.critChance;
+      if (charged) critChance += this.edgeConfig.critChanceBonus;
+      if (Math.random() < critChance) {
+        damage *= this.playerStats.critMultiplier + this.edgeConfig.critBonusMultiplier;
+      }
+    }
+
+    enemy.setData("lastHitTags", tags);
+    enemy.setData("lastHitCharged", charged);
+    enemy.setData("lastHitAt", now);
+    enemy.setData("lastHitSourceType", sourceType ?? "");
+
+    if (tags?.includes("slow") && this.slowConfig.stacks > 0) {
+      const slowPct = Math.min(0.95, (this.slowConfig.slowPercent / 100) * slowPotency);
+      if (slowPct > 0) {
+        this.applySlow(enemy, slowPct, this.slowConfig.durationMs * slowPotency);
+      }
+    }
+
     const current = enemy.getData("health") as number;
     const remaining = current - damage;
     enemy.setData("health", remaining);
     enemy.setTintFill(0xffffff);
-    this.time.delayedCall(50, () => enemy.clearTint());
-
-    if (this.explosions.stacks > 0 && source) {
-      this.spawnExplosion(source.x, source.y, 32 + this.explosions.stacks * 8);
-    }
+    this.time.delayedCall(50, () => {
+      if (enemy.active) enemy.clearTint();
+    });
 
     if (remaining <= 0) {
-      this.handleEnemyDeath(enemy);
+      this.handleEnemyDeath(enemy, tags);
     } else if ((enemy.getData("kind") as string) === "boss") {
       this.handleBossPhaseChange();
     }
+
+    // edge extension removed with simplified charge; no-op
   }
 
-  private spawnExplosion(x: number, y: number, radius: number) {
-    if (!this.lowGraphics) {
-      const circle = this.add
-        .circle(x, y, radius, 0xffffff, 0.08)
-        .setStrokeStyle(1, 0xe0e6ff);
-      this.time.delayedCall(120, () => circle.destroy());
+  private applySlow(enemy: Phaser.Physics.Arcade.Image, slowPercent: number, durationMs: number) {
+    const factor = Math.max(0.05, 1 - slowPercent);
+    const expireAt = this.time.now + durationMs;
+    const existingExpire = enemy.getData("slowUntil") as number | undefined;
+    const existingFactor = enemy.getData("slowFactor") as number | undefined;
+    const nextExpire = existingExpire && existingExpire > expireAt ? existingExpire : expireAt;
+    const nextFactor = existingFactor ? Math.min(existingFactor, factor) : factor;
+    enemy.setData("slowUntil", nextExpire);
+    enemy.setData("slowFactor", nextFactor);
+  }
+
+  private handleForks(projectile: Phaser.Physics.Arcade.Image, enemy: Phaser.Physics.Arcade.Image) {
+    const charged = projectile.getData("charged");
+    const canSplit = this.splitConfig.enabled;
+    if (!charged && !canSplit) return;
+    if (!projectile.getData("canFork")) return;
+    const sourceType = projectile.getData("sourceType") as string;
+    if (sourceType === "fork") return;
+
+    let forks = 0;
+    let spreadDeg = 0;
+    let damageMultiplier = 1;
+
+    if (charged && this.forkConfig.forks > 0) {
+      forks = this.forkConfig.forks + this.edgeConfig.bonusForks;
+      spreadDeg = this.forkConfig.spreadDegrees;
+      damageMultiplier = this.forkConfig.forkDamagePercent / 100;
+    } else if (!charged && this.splitConfig.enabled) {
+      forks = this.splitConfig.forks;
+      spreadDeg = this.splitConfig.spreadDegrees;
+      damageMultiplier = this.splitConfig.damageMultiplier;
     }
+
+    if (forks <= 0) return;
+
+    projectile.setData("canFork", false);
+    const spreadRad = Phaser.Math.DegToRad(spreadDeg);
+    const baseDir = new Phaser.Math.Vector2(enemy.x - projectile.x, enemy.y - projectile.y).normalize();
+    const totalSpread = Math.max(spreadRad, 0.01);
+    const step = forks > 1 ? totalSpread / (forks - 1) : 0;
+    const start = -totalSpread / 2;
+
+    for (let i = 0; i < forks; i++) {
+      const dir = baseDir.clone().rotate(start + step * i);
+      const tags = (projectile.getData("tags") as string[] | undefined) ?? [];
+      this.spawnBullet({
+        x: projectile.x,
+        y: projectile.y,
+        dir,
+        damage: projectile.getData("damage") * damageMultiplier,
+        pierce: projectile.getData("pierce"),
+        bounce: projectile.getData("bounces") ?? 0,
+        tags,
+        charged: false,
+        sourceType: "fork",
+      });
+    }
+  }
+
+  private handleThreadNeedle(projectile: Phaser.Physics.Arcade.Image) {
+    if (!this.threadConfig.unlocked) return;
+    const now = this.time.now;
+    if (now < this.threadConfig.nextReadyAt) return;
+    const lastHit = projectile.getData("lastHitAt") as number;
+    let hits = projectile.getData("hitCount") as number;
+    if (!lastHit || now - lastHit > this.threadConfig.windowMs) {
+      hits = 0;
+    }
+    hits += 1;
+    projectile.setData("hitCount", hits);
+    projectile.setData("lastHitAt", now);
+    if (hits >= 2) {
+      this.threadConfig.nextReadyAt = now + this.threadConfig.cooldownMs;
+      const refund = this.ability.dashCooldownMs * this.threadConfig.refundPercent;
+      this.ability.nextDashAt = Math.max(now, this.ability.nextDashAt - refund);
+    }
+  }
+
+  private applyAoeDamage(
+    x: number,
+    y: number,
+    radius: number,
+    damage: number,
+    sourceTags: string[] = [],
+    isPulse = false
+  ) {
+    const tags = new Set<string>(["aoe"]);
+    if (isPulse) tags.add("pulse");
+    sourceTags.forEach((t) => tags.add(t));
+    const applySlowPotency = this.pulseInheritance.stacks > 0 && sourceTags.includes("slow");
+    let hitAny = false;
     this.enemies.getChildren().forEach((child) => {
       const enemy = child as Phaser.Physics.Arcade.Image;
       if (!enemy.active) return;
       const dist = Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y);
-      if (dist <= radius + 10) {
-        this.applyDamageToEnemy(enemy, this.playerStats.damage * 0.5);
+      if (dist <= radius + 2) {
+        hitAny = true;
+        const potency = applySlowPotency
+          ? this.pulseInheritance.potency
+          : 1;
+        this.applyDamageToEnemy(enemy, damage, undefined, {
+          tags: Array.from(tags),
+          slowPotencyMultiplier: potency,
+          isPulse,
+        });
+        if (this.vacuumConfig.stacks > 0) {
+          this.applyVacuumPull(enemy, x, y, radius);
+        }
       }
     });
+    if (hitAny) {
+      if (isPulse) {
+        this.spawnBurstVisual(x, y, radius, COLOR_PULSE, 0.6);
+        this.maybeGrantInvulnFromPulse();
+      }
+      if (this.vacuumConfig.stacks > 0) {
+        this.spawnVacuumRing(x, y, radius);
+      }
+    }
   }
 
-  private cullProjectiles() {
+  private applyVacuumPull(
+    enemy: Phaser.Physics.Arcade.Image,
+    cx: number,
+    cy: number,
+    radius: number
+  ) {
+    if (radius <= 0) return;
+    if (!enemy.active) return;
+    const dx = cx - enemy.x;
+    const dy = cy - enemy.y;
+    const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+    const strength = this.vacuumConfig.pullStrength;
+    const t = Phaser.Math.Clamp(1 - dist / radius, 0, 1);
+    const impulse = strength * t;
+    const body = enemy.body as Phaser.Physics.Arcade.Body;
+    body.velocity.x += (dx / dist) * impulse;
+    body.velocity.y += (dy / dist) * impulse;
+  }
+
+  private spawnOverloadExplosion(x: number, y: number, sourceTags: string[] = []) {
+    if (this.overloadConfig.stacks <= 0) return;
+    const now = this.time.now;
+    if (now < this.overloadConfig.lastTriggerAt + this.overloadConfig.cooldownMs) return;
+    this.overloadConfig.lastTriggerAt = now;
+    const radius = this.overloadConfig.radius;
+    this.spawnBurstVisual(x, y, radius, COLOR_OVERLOAD, 0.9);
+    this.applyAoeDamage(
+      x,
+      y,
+      radius,
+      this.overloadConfig.damage,
+      sourceTags.concat(["overload"]),
+      true
+    );
+  }
+
+  private tryChainArc(origin: Phaser.Physics.Arcade.Image) {
+    if (this.chainArcConfig.stacks <= 0) return;
+    const now = this.time.now;
+    if (now < this.chainArcConfig.lastAt + this.chainArcConfig.cooldownMs) return;
+    const range = this.chainArcConfig.range;
+    let nearest: Phaser.Physics.Arcade.Image | null = null;
+    let nearestDist = Number.MAX_VALUE;
+    this.enemies.getChildren().forEach((child) => {
+      const enemy = child as Phaser.Physics.Arcade.Image;
+      if (!enemy.active) return;
+      if (enemy === origin) return;
+      const dist = Phaser.Math.Distance.Between(origin.x, origin.y, enemy.x, enemy.y);
+      if (dist < range && dist < nearestDist) {
+        nearest = enemy;
+        nearestDist = dist;
+      }
+    });
+    if (!nearest) return;
+    const target = nearest as Phaser.Physics.Arcade.Image;
+    this.chainArcConfig.lastAt = now;
+    const damage = this.playerStats.damage * this.chainArcConfig.damagePercent;
+    this.applyDamageToEnemy(target, damage, undefined, { tags: ["arc"] });
+    if (!this.lowGraphics) {
+      const line = this.add.line(0, 0, origin.x, origin.y, target.x, target.y, COLOR_PULSE, 0.7).setLineWidth(2);
+      this.tweens.add({
+        targets: line,
+        alpha: { from: 0.7, to: 0 },
+        duration: 150,
+        onComplete: () => line.destroy(),
+      });
+    }
+  }
+
+  private maybeGrantInvulnFromPulse() {
+    if (!this.iframeConfig.unlocked) return;
+    const now = this.time.now;
+    if (now < this.iframeConfig.nextReadyAt) return;
+    this.iframeConfig.nextReadyAt = now + this.iframeConfig.cooldownMs;
+    this.invulnUntil = now + this.iframeConfig.durationMs;
+  }
+
+  private handleProjectileBounds() {
     const margin = 32;
     const left = this.screenBounds.left - margin;
     const right = this.screenBounds.right + margin;
     const top = this.screenBounds.top - margin;
     const bottom = this.screenBounds.bottom + margin;
 
-    const cull = (group: Phaser.Physics.Arcade.Group) => {
-      group.getChildren().forEach((child) => {
-        const proj = child as Phaser.Physics.Arcade.Image;
-        if (!proj.active || !proj.visible) return;
-        if (proj.x < left || proj.x > right || proj.y < top || proj.y > bottom) {
-          proj.destroy();
-        }
-      });
-    };
+    this.bullets.getChildren().forEach((child) => {
+      const proj = child as Phaser.Physics.Arcade.Image;
+      if (!proj.active || !proj.visible) return;
+      const body = proj.body as Phaser.Physics.Arcade.Body;
+      let bounces = (proj.getData("bounces") as number) ?? 0;
+      let bounced = false;
+      let outOfBounds = false;
 
-    cull(this.bullets);
-    cull(this.enemyBullets);
+      if (proj.x < left) {
+        proj.x = left;
+        outOfBounds = true;
+        if (bounces > 0) {
+          body.velocity.x = Math.abs(body.velocity.x);
+          bounces -= 1;
+          bounced = true;
+        }
+      } else if (proj.x > right) {
+        proj.x = right;
+        outOfBounds = true;
+        if (bounces > 0) {
+          body.velocity.x = -Math.abs(body.velocity.x);
+          bounces -= 1;
+          bounced = true;
+        }
+      }
+
+      if (proj.y < top) {
+        proj.y = top;
+        outOfBounds = true;
+        if (bounces > 0) {
+          body.velocity.y = Math.abs(body.velocity.y);
+          bounces -= 1;
+          bounced = true;
+        }
+      } else if (proj.y > bottom) {
+        proj.y = bottom;
+        outOfBounds = true;
+        if (bounces > 0) {
+          body.velocity.y = -Math.abs(body.velocity.y);
+          bounces -= 1;
+          bounced = true;
+        }
+      }
+
+      if (bounced) {
+        proj.setData("bounces", bounces);
+      } else if (outOfBounds) {
+        proj.destroy();
+      }
+    });
+
+    this.enemyBullets.getChildren().forEach((child) => {
+      const proj = child as Phaser.Physics.Arcade.Image;
+      if (!proj.active || !proj.visible) return;
+      if (
+        proj.x < left ||
+        proj.x > right ||
+        proj.y < top ||
+        proj.y > bottom
+      ) {
+        proj.destroy();
+      }
+    });
   }
 
-  private handleEnemyDeath(enemy: Phaser.Physics.Arcade.Image) {
+  private handleEnemyDeath(enemy: Phaser.Physics.Arcade.Image, killerTags?: string[]) {
     const kind = enemy.getData("kind") as string;
     const x = enemy.x;
     const y = enemy.y;
+    const slowed = (enemy.getData("slowUntil") as number | undefined) ?? 0;
+    if (this.overloadConfig.stacks > 0 && slowed > this.time.now) {
+      const tags =
+        killerTags ??
+        (enemy.getData("lastHitTags") as string[] | undefined) ??
+        [];
+      this.spawnOverloadExplosion(x, y, tags);
+    }
     enemy.destroy();
     useRunStore.getState().actions.recordKill();
     this.dropXp(x, y, kind);
     soundManager.playSfx("enemyDown");
-    this.tryDrainHeal();
+    this.tryChainArc(enemy);
+    this.tryKineticHeal();
     if (kind === "boss") {
       this.endRun(true);
     }
-  }
-
-  private tryDrainHeal() {
-    if (!this.drain.unlocked || this.time.now < this.drain.nextHealAt) return;
-    this.healPlayer(0.5);
-    this.drain.nextHealAt = this.time.now + 1700;
-  }
-
-  private healPlayer(amount: number) {
-    this.playerStats.health = Math.min(
-      this.playerStats.maxHealth,
-      this.playerStats.health + amount
-    );
-    useRunStore.getState().actions.setVitals(
-      this.playerStats.health,
-      this.playerStats.maxHealth
-    );
   }
 
   private dropXp(x: number, y: number, kind: string) {
@@ -840,6 +1384,7 @@ export class MainScene extends Phaser.Scene {
     const value = pickup.getData("value") as number;
     pickup.destroy();
     soundManager.playSfx("xpPickup");
+    this.tryShieldPickup();
     this.xp += value;
     while (this.xp >= this.nextXpThreshold) {
       this.xp -= this.nextXpThreshold;
@@ -847,6 +1392,46 @@ export class MainScene extends Phaser.Scene {
     }
     const actions = useRunStore.getState().actions;
     actions.setXp(this.level, this.xp, this.nextXpThreshold);
+  }
+
+  private tryShieldPickup() {
+    if (this.shieldConfig.stacks <= 0) return;
+    const now = this.time.now;
+    if (now < this.shieldConfig.nextReadyAt) return;
+    this.shieldConfig.activeUntil = now + this.shieldConfig.durationMs;
+    this.shieldConfig.hp = this.shieldConfig.shieldHp;
+    this.shieldConfig.nextReadyAt = now + this.shieldConfig.cooldownMs;
+    if (!this.lowGraphics) {
+      if (!this.shieldRing) {
+        this.shieldRing = this.add
+          .circle(this.player!.x, this.player!.y, 26 * OBJECT_SCALE, COLOR_PULSE, 0.06)
+          .setStrokeStyle(3, COLOR_PULSE, 0.8)
+          .setDepth(1.5);
+      }
+      this.shieldRing.setVisible(true);
+      this.shieldRing.setAlpha(0.8);
+      this.shieldRing.setPosition(this.player!.x, this.player!.y);
+      this.spawnBurstVisual(this.player!.x, this.player!.y, 30 * OBJECT_SCALE, COLOR_PULSE, 0.9);
+    }
+  }
+
+  private tryKineticHeal() {
+    if (this.kineticConfig.stacks <= 0) return;
+    const now = this.time.now;
+    if (now < this.kineticConfig.nextReadyAt) return;
+    this.kineticConfig.nextReadyAt = now + this.kineticConfig.cooldownMs;
+    this.healPlayer(this.kineticConfig.healAmount);
+  }
+
+  private healPlayer(amount: number) {
+    this.playerStats.health = Math.min(
+      this.playerStats.maxHealth,
+      this.playerStats.health + amount
+    );
+    useRunStore.getState().actions.setVitals(
+      this.playerStats.health,
+      this.playerStats.maxHealth
+    );
   }
 
   private levelUp() {
@@ -865,57 +1450,154 @@ export class MainScene extends Phaser.Scene {
       const stacks = this.upgradeStacks[u.id] ?? 0;
       return u.maxStacks ? stacks < u.maxStacks : true;
     });
-    const commons = available.filter((u) => u.rarity === "common");
-    const rares = available.filter((u) => u.rarity === "rare");
     const picks: UpgradeDefinition[] = [];
 
+    const pickWeighted = (pool: UpgradeDefinition[]) => {
+      const total = pool.reduce((sum, u) => sum + (u.dropWeight ?? 1), 0);
+      let roll = Math.random() * total;
+      for (const u of pool) {
+        roll -= u.dropWeight ?? 1;
+        if (roll <= 0) return u;
+      }
+      return pool[pool.length - 1];
+    };
+
+    const pool = available.slice();
     for (let i = 0; i < 3; i++) {
-      const useRare = Math.random() < 0.35 && rares.length > 0;
-      const pool = useRare ? rares : commons.length > 0 ? commons : rares;
       if (pool.length === 0) break;
-      const index = Phaser.Math.Between(0, pool.length - 1);
-      const [choice] = pool.splice(index, 1);
+      const choice = pickWeighted(pool);
       picks.push(choice);
+      pool.splice(pool.indexOf(choice), 1);
     }
     return picks;
   }
 
   private applyUpgradeEffects(def: UpgradeDefinition) {
     switch (def.id) {
-      case "power-shot":
-        this.playerStats.damage *= 1.12;
+      case "power-shot": {
+        this.playerStats.damage *= 1.15;
         break;
-      case "rapid-fire":
-        this.playerStats.fireRate *= 1.12;
+      }
+      case "rapid-fire": {
+        this.playerStats.fireRate *= 1.15;
         break;
-      case "swift-projectiles":
-        this.playerStats.projectileSpeed *= 1.15;
+      }
+      case "swift-projectiles": {
+        this.playerStats.projectileSpeed *= 1.2;
         break;
-      case "engine-tune":
+      }
+      case "engine-tune": {
         this.playerStats.moveSpeed *= 1.1;
         break;
-      case "plating":
+      }
+      case "plating": {
         this.playerStats.maxHealth += 1;
-        this.healPlayer(1);
+        this.playerStats.health += 1;
+        useRunStore.getState().actions.setVitals(
+          this.playerStats.health,
+          this.playerStats.maxHealth
+        );
         break;
-      case "sidecar":
+      }
+      case "sidecar": {
         this.playerStats.projectiles += 1;
         break;
-      case "pierce":
+      }
+      case "pierce": {
         this.playerStats.pierce += 1;
         break;
-      case "overdrive":
-        this.overdrive.unlocked = true;
+      }
+      case "heavy-barrel": {
+        this.playerStats.damage *= 1.2;
+        this.playerStats.fireRate *= 0.9;
+        this.projectileScale *= 1.1;
         break;
-      case "explosive-impact":
-        this.explosions.stacks += 1;
+      }
+      case "rebound": {
+        this.playerStats.bounce += 1;
+        this.playerStats.projectileSpeed *= 0.9;
         break;
-      case "drain":
-        this.drain.unlocked = true;
+      }
+      case "dash-sparks": {
+        const stacks = this.upgradeStacks[def.id];
+        const trailShots = 3 + (stacks - 1);
+        const shotDamage = 40 * (1 + 0.1 * (stacks - 1));
+        this.afterimageConfig = { stacks, trailShots, shotDamage };
         break;
-      case "aegis":
-        this.aegis.unlocked = true;
+      }
+      case "held-charge": {
+        const stacks = this.upgradeStacks[def.id];
+        const idleMs = Math.max(400, 800 - (stacks - 1) * 80);
+        const damageBonus = 0.8 + (stacks - 1) * 0.12;
+        const sizeBonus = 0.2;
+        const chargePierceBonus = 2 + (stacks - 1);
+        this.capacitorConfig = { stacks, idleMs, damageBonus, sizeBonus, chargePierceBonus };
+        this.chargeState.idleMs = idleMs;
+        this.chargeState.damageBonus = damageBonus;
+        this.chargeState.sizeBonus = sizeBonus;
         break;
+      }
+      case "shield-pickup": {
+        const stacks = this.upgradeStacks[def.id];
+        const durationMs = (2 + (stacks - 1) * 0.3) * 1000;
+        const cooldownMs = Math.max(3000, 5000 - (stacks - 1) * 600);
+        const shieldHp = 60;
+        this.shieldConfig = {
+          stacks,
+          shieldHp,
+          durationMs,
+          cooldownMs,
+          activeUntil: 0,
+          hp: 0,
+          nextReadyAt: 0,
+        };
+        break;
+      }
+      case "kinetic-siphon": {
+        const stacks = this.upgradeStacks[def.id];
+        const healAmount = 0.3 + (stacks - 1) * 0.1;
+        const cooldownMs = Math.max(800, 1200 - (stacks - 1) * 200);
+        this.kineticConfig = { stacks, healAmount, cooldownMs, nextReadyAt: 0 };
+        break;
+      }
+      case "prism-spread": {
+        const stacks = this.upgradeStacks[def.id];
+        const prevBonus = this.spreadConfig.critBonus;
+        const spreadDegrees = Math.max(3, 6 - (stacks - 1) * 1.5);
+        const critBonus = 0.05 * stacks;
+        this.spreadConfig = { stacks, spreadDegrees, critBonus };
+        this.playerStats.critChance += critBonus - prevBonus;
+        break;
+      }
+      case "momentum-feed": {
+        const stacks = this.upgradeStacks[def.id];
+        const ramp = 0.25 + (stacks - 1) * 0.05;
+        const timeToMaxMs = Math.max(1400, 2000 - (stacks - 1) * 200);
+        this.momentumConfig = { stacks, ramp, timeToMaxMs, timerMs: 0, bonus: 0 };
+        break;
+      }
+      case "split-shot": {
+        const stacks = this.upgradeStacks[def.id];
+        const damageMultiplier = 0.5 + (stacks - 1) * 0.1;
+        const spreadDegrees = Math.max(8, 12 - (stacks - 1) * 2);
+        this.splitConfig = { enabled: true, forks: 2, spreadDegrees, damageMultiplier };
+        break;
+      }
+      case "explosive-impact": {
+        const stacks = this.upgradeStacks[def.id];
+        const radius = (32 + (stacks - 1) * 10) * OBJECT_SCALE;
+        const damageMultiplier = 0.55 + (stacks - 1) * 0.1;
+        this.explosiveConfig = { stacks, radius, damageMultiplier };
+        break;
+      }
+      case "chain-arc": {
+        const stacks = this.upgradeStacks[def.id];
+        const range = 180 + (stacks - 1) * 20;
+        const damagePercent = 0.6 + (stacks - 1) * 0.1;
+        const cooldownMs = Math.max(120, 150 - (stacks - 1) * 20);
+        this.chainArcConfig = { stacks, range, damagePercent, cooldownMs, lastAt: 0 };
+        break;
+      }
       default:
         break;
     }
@@ -1039,14 +1721,37 @@ export class MainScene extends Phaser.Scene {
   }
 
   private handlePlayerDamage(_source: Phaser.Physics.Arcade.Image, amount: number, isContact: boolean) {
-    if (this.time.now < this.aegis.activeUntil) return;
-    if (this.aegis.unlocked && this.playerStats.health <= this.playerStats.maxHealth * 0.4 && this.time.now > this.aegis.nextReadyAt) {
-      this.aegis.activeUntil = this.time.now + 1600;
-      this.aegis.nextReadyAt = this.time.now + 10000;
-      return;
+    const now = this.time.now;
+    if (now < this.invulnUntil) return;
+    let remaining = isContact ? amount + 0.5 : amount;
+
+    if (this.shieldConfig.hp > 0 && now <= this.shieldConfig.activeUntil) {
+      const absorbed = Math.min(this.shieldConfig.hp, remaining);
+      this.shieldConfig.hp -= absorbed;
+      remaining -= absorbed;
+      if (
+        absorbed > 0 &&
+        this.conductiveConfig.stacks > 0 &&
+        now >= this.conductiveConfig.nextPulseAt
+      ) {
+        this.conductiveConfig.nextPulseAt = now + this.conductiveConfig.cooldownMs;
+        this.applyAoeDamage(
+          this.player!.x,
+          this.player!.y,
+          this.conductiveConfig.radius,
+          this.conductiveConfig.damage,
+          ["pulse", "shield"],
+          true
+        );
+      }
+      if (this.shieldConfig.hp <= 0) {
+        this.shieldConfig.activeUntil = 0;
+      }
     }
-    const damage = isContact ? amount + 0.5 : amount;
-    this.playerStats.health -= damage;
+
+    if (remaining <= 0) return;
+
+    this.playerStats.health -= remaining;
     useRunStore.getState().actions.setVitals(
       this.playerStats.health,
       this.playerStats.maxHealth
@@ -1064,21 +1769,6 @@ export class MainScene extends Phaser.Scene {
     draw(g);
     g.generateTexture(key, 64, 64);
     g.destroy();
-  }
-
-  private handleOverdrive(dt: number) {
-    if (!this.overdrive.unlocked) return;
-    const playerBody = this.player!.body as Phaser.Physics.Arcade.Body;
-    const speed = playerBody.velocity.length();
-    if (speed < 6) {
-      this.overdrive.timer += dt;
-      if (this.overdrive.timer > 0.6) {
-        this.overdrive.active = true;
-      }
-    } else {
-      this.overdrive.active = false;
-      this.overdrive.timer = 0;
-    }
   }
 
   private pickPerimeterSpawn() {

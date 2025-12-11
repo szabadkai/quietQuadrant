@@ -1,5 +1,7 @@
 export type Rarity = "common" | "rare";
 
+export type UpgradeTuning = Record<string, number>;
+
 export interface UpgradeDefinition {
   id: string;
   name: string;
@@ -7,6 +9,11 @@ export interface UpgradeDefinition {
   rarity: Rarity;
   maxStacks?: number;
   category: "offense" | "defense" | "utility";
+  tags?: string[];
+  synergy?: string;
+  tuning?: UpgradeTuning;
+  stackingNotes?: string;
+  dropWeight?: number;
 }
 
 export interface UpgradeInstance {

@@ -198,6 +198,81 @@ canvas {
   flex-wrap: wrap;
 }
 
+.subheader {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--vector-ink);
+  text-transform: uppercase;
+  margin: 16px 0 8px;
+}
+
+.pause-loadout {
+  margin-top: 12px;
+}
+
+.swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.upgrade-swatch {
+  border: 1px solid var(--vector-line);
+  background: rgba(5, 10, 16, 0.7);
+  border-radius: 6px;
+  padding: 10px 12px;
+  box-shadow: inset 0 0 0 1px rgba(120, 243, 255, 0.06);
+}
+
+.upgrade-swatch.rare {
+  border-color: var(--vector-ink);
+  box-shadow: 0 0 12px rgba(120, 243, 255, 0.22);
+}
+
+.swatch-top {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.pill {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(120, 243, 255, 0.08);
+  border: 1px solid var(--vector-line);
+  color: var(--vector-ink);
+}
+
+.pill.rarity {
+  color: var(--vector-ink-strong);
+}
+
+.pill.category {
+  color: var(--vector-ink-soft);
+}
+
+.pill.stacks {
+  color: var(--vector-ink);
+  border-color: var(--vector-ink);
+}
+
+.swatch-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.swatch-desc {
+  color: var(--vector-ink-soft);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
 button {
   border-radius: 3px;
   border: 1px solid var(--vector-line);
