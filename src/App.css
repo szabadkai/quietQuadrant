@@ -170,14 +170,14 @@ canvas {
 .upgrade-card .rarity {
   font-size: 10px;
   letter-spacing: 0.12em;
-  color: var(--vector-ink);
+  color: var(--vector-ink-soft);
   margin-bottom: 6px;
   text-transform: uppercase;
 }
 
 .upgrade-card.rare {
   border-color: var(--vector-ink);
-  box-shadow: 0 0 16px rgba(120, 243, 255, 0.25);
+  box-shadow: 0 0 12px rgba(120, 243, 255, 0.16);
 }
 
 .title-screen .panel.hero h1 {

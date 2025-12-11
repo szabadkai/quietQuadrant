@@ -94,28 +94,6 @@ export const PauseMenu = () => {
         <div className="pause-settings">
           <div className="subheader">Settings</div>
           <div className="settings-grid">
-            <div className="setting-row">
-              <div className="label">Mute All</div>
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={settings.muteAll}
-                  onChange={(e) => updateSettings({ muteAll: e.target.checked })}
-                />
-                <span>Silence all game audio</span>
-              </label>
-            </div>
-            <div className="setting-row">
-              <div className="label">Mute Music</div>
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={settings.muteMusic}
-                  onChange={(e) => updateSettings({ muteMusic: e.target.checked })}
-                />
-                <span>Silence soundtrack only</span>
-              </label>
-            </div>
             {sliders.map((slider) => (
               <div key={slider.key} className="setting-row">
                 <div className="label">{slider.label}</div>
@@ -134,21 +112,6 @@ export const PauseMenu = () => {
                 </div>
               </div>
             ))}
-            <div className="setting-row">
-              <div className="label">Low Graphics</div>
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={settings.lowGraphicsMode}
-                  onChange={(e) => {
-                    const enabled = e.target.checked;
-                    updateSettings({ lowGraphicsMode: enabled });
-                    gameManager.setLowGraphicsMode(enabled);
-                  }}
-                />
-                <span>Reduce effects for performance</span>
-              </label>
-            </div>
           </div>
         </div>
       </div>
