@@ -67,13 +67,14 @@ export const HUD = () => {
         {seasonInfo && (
           <div className="hud-block compact affix-block">
             <div className="label">Weekly</div>
-            <div className="tiny truncate">Seed {seasonInfo.seedId}</div>
             <div className="tiny truncate">
+              Seed {seasonInfo.seedId} ·{" "}
               {seasonInfo.boss
                 ? BOSSES.find((b) => b.id === seasonInfo.boss?.id)?.name ?? seasonInfo.boss.id
                 : "—"}
             </div>
             <div className="tiny truncate">
+              Affix:{" "}
               {seasonInfo.affix
                 ? AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ?? seasonInfo.affix.id
                 : "—"}
