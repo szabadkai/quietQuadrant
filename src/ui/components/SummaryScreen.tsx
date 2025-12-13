@@ -5,6 +5,7 @@ import { AFFIXES } from "../../config/affixes";
 import { useMetaStore } from "../../state/useMetaStore";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
+import { SYNERGY_DEFINITIONS } from "../../config/synergies";
 
 export const SummaryScreen = () => {
   const lastRun = useRunStore((s) => s.lastRunSummary);
@@ -12,6 +13,10 @@ export const SummaryScreen = () => {
   const bestRunsBySeed = useMetaStore((s) => s.bestRunsBySeed);
   const { setScreen } = useUIStore((s) => s.actions);
   const isVictory = lastRun?.bossDefeated;
+  const synergies = lastRun?.synergies ?? [];
+  const synergyDefs = synergies
+    .map((id) => SYNERGY_DEFINITIONS.find((s) => s.id === id))
+    .filter((s): s is (typeof SYNERGY_DEFINITIONS)[number] => Boolean(s));
 
   const formattedDuration = useMemo(() => {
     if (!lastRun) return "--:--";
@@ -69,6 +74,18 @@ export const SummaryScreen = () => {
             ))}
           </div>
         </div>
+        {synergyDefs.length > 0 && (
+          <div className="achievements-list">
+            <div className="label">Synergies Discovered</div>
+            <div className="pill-row">
+              {synergyDefs.map((syn) => (
+                <span className="pill achievement" key={syn.id} title={syn.description}>
+                  {syn.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         {bestRun && (
           <div className="note">
             Best: Wave {bestRun.wavesCleared} · {Math.floor(bestRun.durationSeconds)}s

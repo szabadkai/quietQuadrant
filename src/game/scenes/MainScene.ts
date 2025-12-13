@@ -3,11 +3,12 @@ import { GAME_HEIGHT, GAME_WIDTH } from "../GameConfig";
 import { WAVES } from "../../config/waves";
 import { getEnemyDefinition } from "../../config/enemies";
 import { UPGRADE_CATALOG, UPGRADE_RARITY_ODDS, getUpgradeDefinition } from "../../config/upgrades";
+import { SYNERGY_DEFINITIONS } from "../../config/synergies";
 import { soundManager } from "../../audio/SoundManager";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
 import { useMetaStore } from "../../state/useMetaStore";
-import type { BossDefinition, EnemySpawn, Rarity, UpgradeDefinition, WeeklyAffix } from "../../models/types";
+import type { BossDefinition, EnemySpawn, UpgradeDefinition, WeeklyAffix } from "../../models/types";
 import { GAME_EVENT_KEYS, gameEvents } from "../events";
 import { BOSSES } from "../../config/bosses";
 import { Prng } from "../../utils/seed";
@@ -21,6 +22,7 @@ const XP_ATTRACT_RADIUS = 180;
 const XP_ATTRACT_MIN_SPEED = 320;
 const XP_ATTRACT_MAX_SPEED = 760;
 const XP_ATTRACT_LERP_RATE = 10; // per-second factor for smoothing toward target velocity
+const PROJECTILE_MAX_LIFETIME_MS = 3800;
 
 type PlayerStats = {
   moveSpeed: number;
@@ -85,6 +87,16 @@ export class MainScene extends Phaser.Scene {
   private stabilizerConfig = { stacks: 0, contactMultiplier: 1 };
   private platingConfig = { stacks: 0, damageReduction: 0 };
   private shrapnelConfig = { stacks: 0, shards: 0, damage: 0 };
+  // heavy hitter configs
+  private neutronCoreConfig = { active: false, speedMultiplier: 0.6 };
+  private glassCannonCap: number | null = null;
+  private singularityConfig = { active: false, radius: 140, pullStrength: 520 };
+  private bulletHellConfig = { active: false, fireRateMultiplier: 4, damageMultiplier: 0.6, inaccuracyRad: Phaser.Math.DegToRad(32) };
+  private bloodFuelConfig = { stacks: 0, healPercent: 0.12, fireCostPercent: 0.02 };
+  private chainReactionConfig = { stacks: 0, radius: 70, damagePercent: 0.5 };
+  private quantumConfig = { active: false, wrapMargin: 18, projectileLifetimeMs: PROJECTILE_MAX_LIFETIME_MS };
+  private berserkConfig = { stacks: 0, maxBonus: 1 };
+  private activeSynergies = new Set<string>();
   private invulnUntil = 0;
   private difficulty = 1;
   private bossMaxHealth = 0;
@@ -252,10 +264,30 @@ export class MainScene extends Phaser.Scene {
     useUIStore.getState().actions.closeUpgradeSelection();
     this.setPaused(false);
     this.applyUpgradeEffects(def);
+    this.checkSynergies();
     useRunStore.getState().actions.addUpgrade({
       id: def.id,
       stacks: this.upgradeStacks[id],
     });
+  }
+
+  private checkSynergies() {
+    SYNERGY_DEFINITIONS.forEach((syn) => {
+      if (this.activeSynergies.has(syn.id)) return;
+      const ready = syn.requires.every((req) => (this.upgradeStacks[req] ?? 0) > 0);
+      if (ready) {
+        this.enableSynergy(syn.id);
+      }
+    });
+  }
+
+  private enableSynergy(id: string) {
+    if (this.activeSynergies.has(id)) return;
+    this.activeSynergies.add(id);
+    useRunStore.getState().actions.unlockSynergy(id);
+    if (this.player && !this.lowGraphics) {
+      this.spawnBurstVisual(this.player.x, this.player.y, 38 * OBJECT_SCALE, COLOR_OVERLOAD, 0.85);
+    }
   }
 
   private setupVisuals() {
@@ -478,6 +510,17 @@ export class MainScene extends Phaser.Scene {
       undefined,
       this
     );
+    this.physics.add.overlap(
+      this.bullets,
+      this.enemyBullets,
+      (playerBullet, enemyBullet) =>
+        this.handleProjectileIntercept(
+          playerBullet as Phaser.Physics.Arcade.Image,
+          enemyBullet as Phaser.Physics.Arcade.Image
+        ),
+      undefined,
+      this
+    );
   }
 
   private resetState() {
@@ -514,6 +557,15 @@ export class MainScene extends Phaser.Scene {
     this.stabilizerConfig = { stacks: 0, contactMultiplier: 1 };
     this.platingConfig = { stacks: 0, damageReduction: 0 };
     this.shrapnelConfig = { stacks: 0, shards: 0, damage: 0 };
+    this.neutronCoreConfig = { active: false, speedMultiplier: 0.6 };
+    this.glassCannonCap = null;
+    this.singularityConfig = { active: false, radius: 140, pullStrength: 520 };
+    this.bulletHellConfig = { active: false, fireRateMultiplier: 4, damageMultiplier: 0.6, inaccuracyRad: Phaser.Math.DegToRad(32) };
+    this.bloodFuelConfig = { stacks: 0, healPercent: 0.12, fireCostPercent: 0.02 };
+    this.chainReactionConfig = { stacks: 0, radius: 70, damagePercent: 0.5 };
+    this.quantumConfig = { active: false, wrapMargin: 18, projectileLifetimeMs: PROJECTILE_MAX_LIFETIME_MS };
+    this.berserkConfig = { stacks: 0, maxBonus: 1 };
+    this.activeSynergies.clear();
     this.invulnUntil = 0;
     this.ability = {
       dashCooldownMs: 1600,
@@ -679,9 +731,10 @@ export class MainScene extends Phaser.Scene {
     const bounce = this.playerStats.bounce;
     const tags = this.buildProjectileTags(isCharged);
     const fireRateBonus = 1 + this.momentumConfig.bonus;
-    const adjustedFireRate = this.playerStats.fireRate * fireRateBonus;
+    const adjustedFireRate = this.playerStats.fireRate * fireRateBonus * (1 + this.getBerserkBonus());
     const cooldown = 1000 / adjustedFireRate;
     if (this.time.now < this.lastShotAt + cooldown) return;
+    if (!this.payBloodFuelCost()) return;
     this.lastShotAt = this.time.now;
     if (useChargeMode && isCharged) {
       this.chargeState.ready = false;
@@ -693,7 +746,7 @@ export class MainScene extends Phaser.Scene {
         spreadCount <= 1
           ? 0
           : (i - (spreadCount - 1) / 2) * Phaser.Math.DegToRad(spreadStepDeg);
-      const shotDir = dir.clone().rotate(offset);
+      const shotDir = this.applyInaccuracy(dir.clone().rotate(offset));
       this.spawnBullet({
         x: this.player.x,
         y: this.player.y,
@@ -731,18 +784,27 @@ export class MainScene extends Phaser.Scene {
     ) as Phaser.Physics.Arcade.Image;
     if (!bullet) return null;
     const sizeScale = (config.sizeMultiplier ?? 1) * this.projectileScale * OBJECT_SCALE;
+    const isHeavy = this.neutronCoreConfig.active;
+    const isRailgun = config.charged === true && this.activeSynergies.has("railgun");
     bullet.setActive(true);
     bullet.setVisible(true);
     bullet.setScale(sizeScale);
     const body = bullet.body as Phaser.Physics.Arcade.Body;
-    body.setSize(
-      8 * sizeScale,
-      24 * sizeScale,
-      true
-    );
-    body.setVelocity(config.dir.x * this.playerStats.projectileSpeed, config.dir.y * this.playerStats.projectileSpeed);
+    const projectileSpeed = this.playerStats.projectileSpeed * (isHeavy ? this.neutronCoreConfig.speedMultiplier : 1);
+    if (isHeavy) {
+      const radius = 12 * sizeScale;
+      body.setCircle(radius);
+      body.setOffset(bullet.displayWidth * 0.5 - radius, bullet.displayHeight * 0.5 - radius);
+    } else {
+      body.setSize(
+        8 * sizeScale,
+        24 * sizeScale,
+        true
+      );
+    }
+    body.setVelocity(config.dir.x * projectileSpeed, config.dir.y * projectileSpeed);
     bullet.setRotation(config.dir.angle());
-    bullet.setData("pierce", config.pierce);
+    bullet.setData("pierce", this.getPierceWithSynergy(config.pierce, config.charged === true));
     bullet.setData("damage", config.damage);
     bullet.setData("bounces", config.bounce);
     bullet.setData("tags", config.tags);
@@ -751,7 +813,9 @@ export class MainScene extends Phaser.Scene {
     bullet.setData("hitCount", 0);
     bullet.setData("lastHitAt", 0);
     bullet.setData("canFork", true);
-    bullet.setTint(config.charged ? COLOR_CHARGE : COLOR_ACCENT);
+    bullet.setData("isHeavy", isHeavy);
+    bullet.setData("expireAt", this.quantumConfig.active ? this.time.now + this.quantumConfig.projectileLifetimeMs : null);
+    bullet.setTint(isRailgun ? COLOR_OVERLOAD : config.charged ? COLOR_CHARGE : COLOR_ACCENT);
     return bullet;
   }
 
@@ -759,6 +823,43 @@ export class MainScene extends Phaser.Scene {
     const tags = ["projectile"];
     if (isCharged) tags.push("charge");
     return tags;
+  }
+
+  private getPierceWithSynergy(basePierce: number, isCharged: boolean) {
+    if (isCharged && this.activeSynergies.has("railgun")) return 999;
+    return basePierce;
+  }
+
+  private getBerserkBonus() {
+    if (this.berserkConfig.stacks <= 0) return 0;
+    const maxHealth = Math.max(this.playerStats.maxHealth, 1);
+    const healthRatio = Phaser.Math.Clamp(this.playerStats.health / maxHealth, 0, 1);
+    const missing = 1 - healthRatio;
+    return Phaser.Math.Clamp(missing * this.berserkConfig.maxBonus, 0, this.berserkConfig.maxBonus);
+  }
+
+  private applyInaccuracy(dir: Phaser.Math.Vector2) {
+    const maxError = this.bulletHellConfig.active ? this.bulletHellConfig.inaccuracyRad : 0;
+    if (maxError <= 0) return dir;
+    const offset = this.randFloat(-maxError, maxError);
+    return dir.clone().rotate(offset);
+  }
+
+  private payBloodFuelCost() {
+    if (this.bloodFuelConfig.stacks <= 0) return true;
+    const cost = this.playerStats.health * this.bloodFuelConfig.fireCostPercent;
+    if (cost <= 0) return true;
+    this.playerStats.health -= cost;
+    this.enforceHealthCap();
+    useRunStore.getState().actions.setVitals(
+      this.playerStats.health,
+      this.playerStats.maxHealth
+    );
+    if (this.playerStats.health <= 0) {
+      this.endRun(false);
+      return false;
+    }
+    return true;
   }
 
   private spawnAfterimageShots(dir: Phaser.Math.Vector2) {
@@ -903,9 +1004,35 @@ export class MainScene extends Phaser.Scene {
         enemy.setVelocity(targetVec.x * speed * 0.7 * slowFactor, targetVec.y * speed * 0.7 * slowFactor);
         this.tryEnemyShot(enemy, player, true);
       } else if (kind === "boss") {
-        enemy.setVelocity(0, 0);
+        this.updateBossMovement(enemy);
       }
     });
+  }
+
+  private updateBossMovement(boss: Phaser.Physics.Arcade.Image) {
+    const body = boss.body as Phaser.Physics.Arcade.Body | null;
+    if (!body) return;
+    const speed = (boss.getData("speed") as number) ?? 0;
+    const centerX = GAME_WIDTH / 2;
+    const centerY = this.screenBounds.top + 150;
+    const t = this.time.now;
+    const orbitX = 140;
+    const orbitY = 90;
+    let targetX = centerX + Math.cos(t / 1400) * orbitX;
+    let targetY = centerY + Math.sin(t / 1200) * orbitY;
+    if (this.player) {
+      targetX = Phaser.Math.Linear(targetX, this.player.x, 0.12);
+      targetY = Phaser.Math.Linear(targetY, this.player.y - 80, 0.08);
+    }
+    const dir = new Phaser.Math.Vector2(targetX - boss.x, targetY - boss.y);
+    const dist = dir.length();
+    if (dist > 2) {
+      dir.scale(1 / dist);
+      const moveSpeed = speed * 0.65;
+      body.setVelocity(dir.x * moveSpeed, dir.y * moveSpeed);
+    } else {
+      body.setVelocity(0, 0);
+    }
   }
 
   private handleHeatseekingProjectiles(dt: number) {
@@ -1233,6 +1360,23 @@ export class MainScene extends Phaser.Scene {
     bullet.setData("damage", heavy ? 2 : 1);
   }
 
+  private handleProjectileIntercept(
+    playerBullet: Phaser.Physics.Arcade.Image,
+    enemyBullet: Phaser.Physics.Arcade.Image
+  ) {
+    if (playerBullet.getData("isHeavy") !== true) return;
+    enemyBullet.destroy();
+    const pierceLeft = (playerBullet.getData("pierce") as number) ?? 0;
+    if (pierceLeft > 0) {
+      playerBullet.setData("pierce", pierceLeft - 1);
+    } else {
+      playerBullet.destroy();
+    }
+    if (!this.lowGraphics) {
+      this.spawnBurstVisual(playerBullet.x, playerBullet.y, 18 * OBJECT_SCALE, COLOR_OVERLOAD, 0.6);
+    }
+  }
+
   private handleBulletHitEnemy = (
     bullet: Phaser.GameObjects.GameObject,
     target: Phaser.GameObjects.GameObject
@@ -1244,6 +1388,7 @@ export class MainScene extends Phaser.Scene {
     this.applyDamageToEnemy(enemy, damage, projectile);
     this.handleForks(projectile, enemy);
     this.handleExplosiveImpact(projectile, enemy);
+    this.applySingularityPull(enemy);
 
     if (pierceLeft > 0) {
       projectile.setData("pierce", pierceLeft - 1);
@@ -1344,6 +1489,67 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
+  private triggerChainReaction(
+    x: number,
+    y: number,
+    kind: string,
+    maxHealth?: number,
+    source?: Phaser.Physics.Arcade.Image
+  ) {
+    if (this.chainReactionConfig.stacks <= 0) return;
+    if (kind === "boss") return;
+    const damageBase = (maxHealth ?? 0) * this.chainReactionConfig.damagePercent;
+    if (damageBase <= 0) return;
+    const radius =
+      this.chainReactionConfig.radius *
+      (this.activeSynergies.has("black-hole-sun") ? 1.25 : 1);
+    this.enemies.getChildren().forEach((child) => {
+      const enemy = child as Phaser.Physics.Arcade.Image;
+      if (!enemy.active || enemy === source) return;
+      const dist = Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y);
+      if (dist <= radius + 2) {
+        this.applyDamageToEnemy(enemy, damageBase, undefined, { tags: ["volatile", "aoe"] });
+      }
+    });
+    if (!this.lowGraphics) {
+      this.spawnBurstVisual(x, y, radius * 0.7, COLOR_OVERLOAD, 0.7);
+    }
+  }
+
+  private applyBloodFuelHeal() {
+    if (this.bloodFuelConfig.stacks <= 0) return;
+    const healAmount = this.playerStats.maxHealth * this.bloodFuelConfig.healPercent;
+    if (healAmount <= 0) return;
+    this.healPlayer(healAmount);
+  }
+
+  private applySingularityPull(target: Phaser.Physics.Arcade.Image) {
+    if (!this.singularityConfig.active) return;
+    const center = new Phaser.Math.Vector2(target.x, target.y);
+    const radius =
+      this.singularityConfig.radius *
+      (this.activeSynergies.has("black-hole-sun") ? 1.2 : 1);
+    const strength = this.singularityConfig.pullStrength;
+    this.enemies.getChildren().forEach((child) => {
+      const enemy = child as Phaser.Physics.Arcade.Image;
+      if (!enemy.active || enemy === target) return;
+      const dx = center.x - enemy.x;
+      const dy = center.y - enemy.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= 6 || dist > radius) return;
+      const pullScale = 1 - dist / radius;
+      const body = enemy.body as Phaser.Physics.Arcade.Body | null;
+      if (!body) return;
+      const dirX = dx / dist;
+      const dirY = dy / dist;
+      body.velocity.x += dirX * strength * pullScale;
+      body.velocity.y += dirY * strength * pullScale;
+    });
+    if (!this.lowGraphics) {
+      this.spawnBurstVisual(center.x, center.y, radius * 0.5, COLOR_CHARGE, 0.45);
+    }
+  }
+
   private tryChainArc(origin: Phaser.Physics.Arcade.Image) {
     if (this.chainArcConfig.stacks <= 0) return;
     const now = this.time.now;
@@ -1388,6 +1594,19 @@ export class MainScene extends Phaser.Scene {
       const proj = child as Phaser.Physics.Arcade.Image;
       if (!proj.active || !proj.visible) return;
       const body = proj.body as Phaser.Physics.Arcade.Body;
+      const expireAt = proj.getData("expireAt") as number | null;
+      if (expireAt && this.time.now > expireAt) {
+        proj.destroy();
+        return;
+      }
+      if (this.quantumConfig.active) {
+        const wrap = this.quantumConfig.wrapMargin;
+        if (proj.x < left) proj.x = right - wrap;
+        else if (proj.x > right) proj.x = left + wrap;
+        if (proj.y < top) proj.y = bottom - wrap;
+        else if (proj.y > bottom) proj.y = top + wrap;
+        return;
+      }
       let bounces = (proj.getData("bounces") as number) ?? 0;
       let bounced = false;
       let outOfBounds = false;
@@ -1449,14 +1668,20 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
-  private handleEnemyDeath(enemy: Phaser.Physics.Arcade.Image, _killerTags?: string[]) {
+  private handleEnemyDeath(enemy: Phaser.Physics.Arcade.Image, killerTags?: string[]) {
     const kind = enemy.getData("kind") as string;
     const x = enemy.x;
     const y = enemy.y;
+    const maxHealth = (enemy.getData("maxHealth") as number | undefined) ?? (enemy.getData("health") as number);
+    this.spawnShrapnel(enemy);
+    const fromVolatile = killerTags?.includes("volatile");
+    if (!fromVolatile) {
+      this.triggerChainReaction(x, y, kind, maxHealth, enemy);
+    }
     enemy.destroy();
     useRunStore.getState().actions.recordKill();
     this.dropXp(x, y, kind);
-    this.spawnShrapnel(enemy);
+    this.applyBloodFuelHeal();
     soundManager.playSfx("enemyDown");
     this.tryChainArc(enemy);
     this.tryKineticHeal();
@@ -1553,10 +1778,17 @@ export class MainScene extends Phaser.Scene {
       this.playerStats.maxHealth,
       this.playerStats.health + amount
     );
+    this.enforceHealthCap();
     useRunStore.getState().actions.setVitals(
       this.playerStats.health,
       this.playerStats.maxHealth
     );
+  }
+
+  private enforceHealthCap() {
+    if (this.glassCannonCap === null) return;
+    this.playerStats.maxHealth = Math.min(this.playerStats.maxHealth, this.glassCannonCap);
+    this.playerStats.health = Math.min(this.playerStats.health, this.playerStats.maxHealth);
   }
 
   private levelUp() {
@@ -1575,49 +1807,34 @@ export class MainScene extends Phaser.Scene {
       const stacks = this.upgradeStacks[u.id] ?? 0;
       return u.maxStacks ? stacks < u.maxStacks : true;
     });
-    const pools: Record<Rarity, UpgradeDefinition[]> = {
-      common: [],
-      rare: [],
-    };
-    available.forEach((u) => pools[u.rarity].push(u));
     const picks: UpgradeDefinition[] = [];
-
-    const pickWeighted = (pool: UpgradeDefinition[]) => {
-      const total = pool.reduce((sum, u) => sum + (u.dropWeight ?? 1), 0);
-      let roll = this.rng.next() * total;
-      for (const u of pool) {
-        roll -= u.dropWeight ?? 1;
-        if (roll <= 0) return u;
-      }
-      return pool[pool.length - 1];
+    const rareBonus = this.affix?.rareUpgradeBonus ?? 0;
+    const weightFor = (u: UpgradeDefinition) => {
+      const rarityBase =
+        u.rarity === "rare"
+          ? UPGRADE_RARITY_ODDS.rare * (1 + rareBonus)
+          : UPGRADE_RARITY_ODDS[u.rarity] ?? 0;
+      return Math.max(0, (u.dropWeight ?? 1) * rarityBase);
     };
+    const weightedPool = available
+      .map((u) => ({ def: u, weight: weightFor(u) }))
+      .filter((entry) => entry.weight > 0);
 
     for (let i = 0; i < 3; i++) {
-      const hasCommon = pools.common.length > 0;
-      const hasRare = pools.rare.length > 0;
-      if (!hasCommon && !hasRare) break;
-
-      let targetRarity: Rarity;
-      if (hasCommon && hasRare) {
-        const rareBonus = this.affix?.rareUpgradeBonus ?? 0;
-        const commonOdds = UPGRADE_RARITY_ODDS.common;
-        const rareOdds = UPGRADE_RARITY_ODDS.rare * (1 + rareBonus);
-        const totalOdds = commonOdds + rareOdds;
-        const roll = this.rng.next() * totalOdds;
-        targetRarity = roll < commonOdds ? "common" : "rare";
-      } else {
-        targetRarity = hasCommon ? "common" : "rare";
+      if (weightedPool.length === 0) break;
+      const totalWeight = weightedPool.reduce((sum, entry) => sum + entry.weight, 0);
+      if (totalWeight <= 0) break;
+      let roll = this.rng.next() * totalWeight;
+      let pickedIndex = weightedPool.length - 1;
+      for (let idx = 0; idx < weightedPool.length; idx++) {
+        roll -= weightedPool[idx].weight;
+        if (roll <= 0) {
+          pickedIndex = idx;
+          break;
+        }
       }
-
-      // Fallback if chosen bucket is empty (odds said rare, but none remain).
-      if (pools[targetRarity].length === 0) {
-        targetRarity = targetRarity === "common" ? "rare" : "common";
-      }
-
-      const pool = pools[targetRarity];
-      const choice = pickWeighted(pool);
-      picks.push(choice);
-      pool.splice(pool.indexOf(choice), 1);
+      picks.push(weightedPool[pickedIndex].def);
+      weightedPool.splice(pickedIndex, 1);
     }
     return picks;
   }
@@ -1646,6 +1863,7 @@ export class MainScene extends Phaser.Scene {
         this.playerStats.health = Math.min(this.playerStats.maxHealth, this.playerStats.health + 1);
         const damageReduction = Math.min(0.08 * stacks, 0.6);
         this.platingConfig = { stacks, damageReduction };
+        this.enforceHealthCap();
         useRunStore.getState().actions.setVitals(
           this.playerStats.health,
           this.playerStats.maxHealth
@@ -1778,6 +1996,62 @@ export class MainScene extends Phaser.Scene {
         this.homingConfig = { stacks, range, turnRate };
         break;
       }
+      case "neutron-core": {
+        this.neutronCoreConfig = { active: true, speedMultiplier: 0.6 };
+        this.projectileScale *= 1.15;
+        this.playerStats.projectileSpeed *= this.neutronCoreConfig.speedMultiplier;
+        break;
+      }
+      case "glass-cannon": {
+        this.glassCannonCap = 1;
+        this.playerStats.damage *= 3;
+        this.playerStats.maxHealth = Math.min(this.playerStats.maxHealth, 1);
+        this.playerStats.health = Math.min(this.playerStats.health, this.playerStats.maxHealth);
+        useRunStore.getState().actions.setVitals(
+          this.playerStats.health,
+          this.playerStats.maxHealth
+        );
+        break;
+      }
+      case "singularity-rounds": {
+        this.singularityConfig = { active: true, radius: 160, pullStrength: 640 };
+        break;
+      }
+      case "bullet-hell": {
+        this.bulletHellConfig = {
+          active: true,
+          fireRateMultiplier: 4,
+          damageMultiplier: 0.6,
+          inaccuracyRad: Phaser.Math.DegToRad(34),
+        };
+        this.playerStats.fireRate *= this.bulletHellConfig.fireRateMultiplier;
+        this.playerStats.damage *= this.bulletHellConfig.damageMultiplier;
+        break;
+      }
+      case "blood-fuel": {
+        const stacks = this.upgradeStacks[def.id];
+        const healPercent = 0.12 + (stacks - 1) * 0.03;
+        const fireCostPercent = 0.02 * stacks;
+        this.bloodFuelConfig = { stacks, healPercent, fireCostPercent };
+        break;
+      }
+      case "chain-reaction": {
+        const stacks = this.upgradeStacks[def.id];
+        const radius = 70 + (stacks - 1) * 10;
+        const damagePercent = 0.5 + (stacks - 1) * 0.05;
+        this.chainReactionConfig = { stacks, radius, damagePercent };
+        break;
+      }
+      case "quantum-tunneling": {
+        this.quantumConfig = { active: true, wrapMargin: 18, projectileLifetimeMs: PROJECTILE_MAX_LIFETIME_MS };
+        break;
+      }
+      case "berserk-module": {
+        const stacks = this.upgradeStacks[def.id];
+        const maxBonus = 1 + (stacks - 1) * 0.5;
+        this.berserkConfig = { stacks, maxBonus };
+        break;
+      }
       default:
         break;
     }
@@ -1862,8 +2136,10 @@ export class MainScene extends Phaser.Scene {
     const stats = getEnemyDefinition(kind as any, elite);
     const enemyHealthMult = this.affix?.enemyHealthMultiplier ?? 1;
     const enemySpeedMult = this.affix?.enemySpeedMultiplier ?? 1;
+    const maxHealth = stats.health * enemyHealthMult;
     enemy.setData("kind", kind);
-    enemy.setData("health", stats.health * enemyHealthMult);
+    enemy.setData("health", maxHealth);
+    enemy.setData("maxHealth", maxHealth);
     enemy.setData("speed", stats.speed * this.difficulty * enemySpeedMult);
     enemy.setData(
       "fireCooldown",
@@ -1892,7 +2168,7 @@ export class MainScene extends Phaser.Scene {
     if (!this.boss) return;
     this.boss.setActive(true);
     this.boss.setVisible(true);
-    this.boss.setScale(OBJECT_SCALE);
+    this.boss.setScale(OBJECT_SCALE * 2);
     this.boss.setData("kind", "boss");
     const base = getEnemyDefinition("boss");
     const tuning = this.bossTemplate?.tuning ?? {};
@@ -1905,6 +2181,7 @@ export class MainScene extends Phaser.Scene {
 
     this.bossMaxHealth = health;
     this.boss.setData("health", health);
+    this.boss.setData("maxHealth", health);
     this.boss.setData("bossId", this.bossTemplate?.id ?? "boss");
     this.boss.setData("speed", speed * this.difficulty);
     this.boss.setData("fireCooldown", fireCooldownBase / (fireRateMultiplier * this.difficulty));
@@ -1912,7 +2189,9 @@ export class MainScene extends Phaser.Scene {
     this.bossNextPatternAt = this.time.now + 1500 / this.difficulty;
     const bossBody = this.boss.body as Phaser.Physics.Arcade.Body;
     bossBody.setSize(this.boss.displayWidth, this.boss.displayHeight, true);
-    bossBody.setImmovable(true);
+    bossBody.setImmovable(false);
+    bossBody.setCollideWorldBounds(true);
+    bossBody.setDrag(60, 60);
   }
 
   private handlePlayerDamage(_source: Phaser.Physics.Arcade.Image, amount: number, isContact: boolean) {
@@ -1976,11 +2255,20 @@ export class MainScene extends Phaser.Scene {
       repeat: 2,
     });
     this.time.delayedCall(1500, () => {
+      if (!enemy.active) {
+        cue.destroy();
+        flash.stop();
+        return;
+      }
       cue.destroy();
       flash.stop();
+      const body = enemy.body as Phaser.Physics.Arcade.Body | null;
+      if (!body) {
+        enemy.destroy();
+        return;
+      }
       enemy.setActive(true);
       enemy.setVisible(true);
-      const body = enemy.body as Phaser.Physics.Arcade.Body;
       body.enable = true;
       enemy.setVelocity(0, 0);
     });
@@ -2020,6 +2308,7 @@ export class MainScene extends Phaser.Scene {
       seedId: state.seedId ?? this.seedId,
       bossId: this.bossTemplate?.id,
       affixId: this.affix?.id,
+      synergies: state.achievedSynergies,
     };
     state.actions.setWaveCountdown(null, null);
     state.actions.endRun(summary);
@@ -2029,5 +2318,18 @@ export class MainScene extends Phaser.Scene {
 
   setLowGraphicsMode(enabled: boolean) {
     this.lowGraphics = enabled;
+  }
+
+  // Dev helper: jump directly to a wave for testing.
+  debugSetWave(waveNumber: number) {
+    const target = Phaser.Math.Clamp(waveNumber - 1, 0, WAVES.length - 1);
+    this.enemies.clear(true, true);
+    this.enemyBullets.clear(true, true);
+    this.xpPickups.clear(true, true);
+    this.intermissionActive = false;
+    this.pendingWaveIndex = null;
+    this.intermissionRemainingMs = 0;
+    this.lastCountdownBroadcast = 0;
+    this.startWave(target);
   }
 }

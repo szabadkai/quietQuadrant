@@ -59,6 +59,11 @@ class GameManager {
     this.mainScene?.setLowGraphicsMode(enabled);
   }
 
+  debugSetWave(waveNumber: number) {
+    if (!this.game) return;
+    this.mainScene?.debugSetWave(waveNumber);
+  }
+
   pause() {
     if (!this.game) return;
     this.mainScene?.setPaused(true);

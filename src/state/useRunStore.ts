@@ -18,12 +18,14 @@ interface RunState {
   seedId: string | null;
   intermissionCountdown: number | null;
   upcomingWave: number | null;
+  achievedSynergies: string[];
   lastRunSummary?: RunSummary;
   actions: {
     startRun: (seedId: string) => void;
     endRun: (summary: RunSummary) => void;
     setWave: (wave: number) => void;
     addUpgrade: (upgrade: UpgradeInstance) => void;
+    unlockSynergy: (synergyId: string) => void;
     setStatus: (status: RunStatus) => void;
     tick: (deltaSeconds: number) => void;
     recordKill: () => void;
@@ -49,6 +51,7 @@ const defaultState = (): Omit<RunState, "actions"> => ({
   seedId: null,
   intermissionCountdown: null,
   upcomingWave: null,
+  achievedSynergies: [],
 });
 
 export const useRunStore = create<RunState>()((set, _get) => ({
@@ -61,6 +64,7 @@ export const useRunStore = create<RunState>()((set, _get) => ({
         runId: crypto.randomUUID(),
         status: "running",
         seedId,
+        achievedSynergies: [],
       })),
     endRun: (summary) =>
       set((state) => ({
@@ -82,6 +86,12 @@ export const useRunStore = create<RunState>()((set, _get) => ({
         }
         return { currentUpgrades: [...state.currentUpgrades, upgrade] };
       }),
+    unlockSynergy: (synergyId) =>
+      set((state) =>
+        state.achievedSynergies.includes(synergyId)
+          ? state
+          : { achievedSynergies: [...state.achievedSynergies, synergyId] }
+      ),
     setStatus: (status) => set(() => ({ status })),
     tick: (deltaSeconds) =>
       set((state) => ({ elapsedTime: state.elapsedTime + deltaSeconds })),

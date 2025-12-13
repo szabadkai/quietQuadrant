@@ -1,4 +1,4 @@
-export type Rarity = "common" | "rare";
+export type Rarity = "common" | "rare" | "legendary";
 
 export type UpgradeTuning = Record<string, number>;
 
@@ -14,6 +14,13 @@ export interface UpgradeDefinition {
   tuning?: UpgradeTuning;
   stackingNotes?: string;
   dropWeight?: number;
+}
+
+export interface SynergyDefinition {
+  id: string;
+  name: string;
+  description: string;
+  requires: string[];
 }
 
 export interface UpgradeInstance {
@@ -32,6 +39,7 @@ export interface RunSummary {
   seedId: string;
   bossId?: string;
   affixId?: string;
+  synergies?: string[];
 }
 
 export interface Settings {

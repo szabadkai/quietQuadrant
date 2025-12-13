@@ -13,6 +13,7 @@ import { HowToPlay } from "./ui/components/HowToPlay";
 import { PauseMenu } from "./ui/components/PauseMenu";
 import { SummaryScreen } from "./ui/components/SummaryScreen";
 import { TitleScreen } from "./ui/components/TitleScreen";
+import { DevPanel } from "./ui/components/DevPanel";
 import { UpgradeOverlay } from "./ui/components/UpgradeOverlay";
 import { WaveCountdown } from "./ui/components/WaveCountdown";
 
@@ -132,6 +133,7 @@ function App() {
       {screen === "title" && <TitleScreen />}
       {screen === "howToPlay" && <HowToPlay />}
       {screen === "summary" && <SummaryScreen />}
+      {import.meta.env.DEV && <DevPanel />}
     </div>
   );
 }
