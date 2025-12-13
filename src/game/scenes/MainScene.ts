@@ -64,7 +64,7 @@ export class MainScene extends Phaser.Scene {
   };
   private ability: AbilityState = {
     dashCooldownMs: 1600,
-    dashDurationMs: 160,
+    dashDurationMs: 220,
     nextDashAt: 0,
     activeUntil: 0,
   };
@@ -83,6 +83,7 @@ export class MainScene extends Phaser.Scene {
   private projectileScale = 1;
   private magnetConfig = { stacks: 0, radiusMult: 1, speedMult: 1 };
   private stabilizerConfig = { stacks: 0, contactMultiplier: 1 };
+  private platingConfig = { stacks: 0, damageReduction: 0 };
   private shrapnelConfig = { stacks: 0, shards: 0, damage: 0 };
   private invulnUntil = 0;
   private difficulty = 1;
@@ -511,11 +512,12 @@ export class MainScene extends Phaser.Scene {
     this.projectileScale = 1;
     this.magnetConfig = { stacks: 0, radiusMult: 1, speedMult: 1 };
     this.stabilizerConfig = { stacks: 0, contactMultiplier: 1 };
+    this.platingConfig = { stacks: 0, damageReduction: 0 };
     this.shrapnelConfig = { stacks: 0, shards: 0, damage: 0 };
     this.invulnUntil = 0;
     this.ability = {
       dashCooldownMs: 1600,
-      dashDurationMs: 160,
+      dashDurationMs: 220,
       nextDashAt: 0,
       activeUntil: 0,
     };
@@ -649,6 +651,7 @@ export class MainScene extends Phaser.Scene {
     const body = this.player!.body as Phaser.Physics.Arcade.Body;
     body.setVelocity(dashDir.x * this.playerStats.moveSpeed * 3, dashDir.y * this.playerStats.moveSpeed * 3);
     this.ability.activeUntil = this.time.now + this.ability.dashDurationMs;
+    this.invulnUntil = this.ability.activeUntil;
     this.ability.nextDashAt = this.time.now + this.ability.dashCooldownMs;
     this.spawnDashTrail(new Phaser.Math.Vector2(this.player!.x, this.player!.y), dashDir);
     this.spawnAfterimageShots(dashDir);
@@ -1638,8 +1641,11 @@ export class MainScene extends Phaser.Scene {
         break;
       }
       case "plating": {
+        const stacks = this.upgradeStacks[def.id];
         this.playerStats.maxHealth += 1;
-        this.playerStats.health += 1;
+        this.playerStats.health = Math.min(this.playerStats.maxHealth, this.playerStats.health + 1);
+        const damageReduction = Math.min(0.08 * stacks, 0.6);
+        this.platingConfig = { stacks, damageReduction };
         useRunStore.getState().actions.setVitals(
           this.playerStats.health,
           this.playerStats.maxHealth
@@ -1661,8 +1667,8 @@ export class MainScene extends Phaser.Scene {
         break;
       }
       case "rebound": {
-        this.playerStats.bounce += 1;
-        this.playerStats.projectileSpeed *= 0.9;
+        this.playerStats.bounce += 2;
+        this.playerStats.projectileSpeed *= 0.95;
         break;
       }
       case "dash-sparks": {
@@ -1913,7 +1919,9 @@ export class MainScene extends Phaser.Scene {
     const now = this.time.now;
     if (now < this.invulnUntil) return;
     const contactMultiplier = isContact ? this.stabilizerConfig.contactMultiplier : 1;
-    let remaining = (isContact ? amount + 0.5 : amount) * contactMultiplier;
+    const armorReduction = Math.min(Math.max(this.platingConfig.damageReduction, 0), 0.6);
+    const armorMultiplier = 1 - armorReduction;
+    let remaining = (isContact ? amount + 0.5 : amount) * contactMultiplier * armorMultiplier;
 
     if (this.shieldConfig.hp > 0 && now <= this.shieldConfig.activeUntil) {
       const absorbed = Math.min(this.shieldConfig.hp, remaining);

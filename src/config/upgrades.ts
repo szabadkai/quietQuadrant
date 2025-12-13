@@ -46,7 +46,7 @@ export const UPGRADE_BLUEPRINTS: UpgradeDefinition[] = [
   {
     id: "plating",
     name: "Light Plating",
-    description: "+1 max health.",
+    description: "+1 max health and -8% incoming damage per stack.",
     rarity: "common",
     category: "defense",
     maxStacks: 5,
@@ -82,7 +82,7 @@ export const UPGRADE_BLUEPRINTS: UpgradeDefinition[] = [
   {
     id: "rebound",
     name: "Rebound",
-    description: "Projectiles bounce once and slow slightly.",
+    description: "Projectiles gain +2 ricochets; -5% speed per stack.",
     rarity: "common",
     category: "offense",
     maxStacks: 3,

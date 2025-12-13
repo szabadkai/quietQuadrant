@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 
-export const GAME_WIDTH = 1100;
-export const GAME_HEIGHT = 700;
+export const GAME_WIDTH = 1024;
+export const GAME_HEIGHT = 768;
 
 export const createGameConfig = (
     parent: string | HTMLElement,
