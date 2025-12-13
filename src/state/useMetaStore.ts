@@ -21,6 +21,7 @@ interface MetaState {
   settings: Settings;
   isHydrated: boolean;
   bestRunsBySeed: PerSeedBest;
+   topRuns: RunSummary[];
   actions: {
     hydrateFromPersistence: () => Promise<void>;
     recordRun: (summary: RunSummary) => Promise<void>;
@@ -33,6 +34,7 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
   settings: defaultSettings,
   isHydrated: false,
   bestRunsBySeed: {},
+  topRuns: [],
   actions: {
     hydrateFromPersistence: async () => {
       const payload = await adapter.loadMeta();
@@ -44,8 +46,9 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
         ? { ...payload.bestRun, seedId: payload.bestRun.seedId ?? "legacy" }
         : undefined;
       const bestRunsBySeed = payload?.bestRunsBySeed ?? {};
+      const topRuns = payload?.topRuns ?? [];
       if (!payload) {
-        set(() => ({ isHydrated: true, settings, bestRunsBySeed }));
+        set(() => ({ isHydrated: true, settings, bestRunsBySeed, topRuns }));
         return;
       }
       set(() => ({
@@ -54,6 +57,7 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
         settings,
         isHydrated: true,
         bestRunsBySeed,
+        topRuns,
       }));
     },
     recordRun: async (summary) => {
@@ -71,18 +75,26 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
         ...state.bestRunsBySeed,
         [summary.seedId]: betterSeedRun,
       };
+      const topRuns = [...state.topRuns.filter((r) => r.runId !== summary.runId), summary]
+        .sort((a, b) => {
+          if (b.wavesCleared !== a.wavesCleared) return b.wavesCleared - a.wavesCleared;
+          return a.durationSeconds - b.durationSeconds;
+        })
+        .slice(0, 20);
       const meta: MetaStatePayload = {
         schemaVersion: 1,
         bestRun,
         totalRuns: state.totalRuns + 1,
         settings: state.settings,
         bestRunsBySeed,
+        topRuns,
       };
       await adapter.saveMeta(meta);
       set(() => ({
         bestRun,
         totalRuns: meta.totalRuns,
         bestRunsBySeed,
+        topRuns,
       }));
     },
     updateSettings: async (patch) => {
@@ -93,6 +105,8 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
         bestRun: state.bestRun,
         totalRuns: state.totalRuns,
         settings,
+        bestRunsBySeed: state.bestRunsBySeed,
+        topRuns: state.topRuns,
       };
       await adapter.saveMeta(meta);
       set(() => ({ settings }));

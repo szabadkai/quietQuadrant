@@ -6,6 +6,7 @@ export interface MetaStatePayload {
   totalRuns: number;
   settings: Settings;
   bestRunsBySeed?: PerSeedBest;
+  topRuns?: RunSummary[];
 }
 
 export interface PersistenceAdapter {
