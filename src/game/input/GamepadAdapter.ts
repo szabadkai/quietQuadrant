@@ -22,12 +22,24 @@ export class GamepadAdapter {
   private lastDashHeld = false;
   private lastPauseHeld = false;
   private lastSwapHeld = false;
+  private lockedPadId?: string;
+  private lockedPadIndex?: number;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, opts?: { lockedPadId?: string; lockedPadIndex?: number }) {
     this.scene = scene;
+    this.lockedPadId = opts?.lockedPadId;
+    this.lockedPadIndex = opts?.lockedPadIndex;
   }
 
-  update(): GamepadControlState {
+  setLockedPad(id?: string, index?: number) {
+    this.lockedPadId = id;
+    this.lockedPadIndex = index;
+    if (this.activePad && id && this.activePad.id !== id) {
+      this.activePad = undefined;
+    }
+  }
+
+  update(preferredPadId?: string, preferredPadIndex?: number): GamepadControlState {
     const base: GamepadControlState = {
       hasGamepad: !!this.scene.input.gamepad,
       usingGamepad: false,
@@ -43,15 +55,36 @@ export class GamepadAdapter {
     if (!plugin) return base;
 
     const connectedPads = plugin.gamepads.filter((p) => p && p.connected) as Phaser.Input.Gamepad.Gamepad[];
-    if (!this.activePad || !this.activePad.connected) {
-      this.activePad = connectedPads.find((p) => p && p.id === this.activePad?.id) ?? connectedPads[0];
-    }
+    const lockedId = preferredPadId ?? this.lockedPadId;
+    const lockedIndex = preferredPadIndex ?? this.lockedPadIndex;
+    const locked = lockedId !== undefined || lockedIndex !== undefined;
 
-    for (const pad of connectedPads) {
-      if (!pad) continue;
-      const activity = this.getPadActivity(pad);
-      if (activity > 0.3 && pad !== this.activePad) {
-        this.activePad = pad;
+    if (locked) {
+      this.activePad =
+        connectedPads.find(
+          (p) =>
+            (lockedId && p.id === lockedId) ||
+            (lockedIndex !== undefined && p.index === lockedIndex)
+        ) ?? this.activePad;
+      if (!this.activePad || !this.activePad.connected) {
+        this.activePad =
+          connectedPads.find(
+            (p) =>
+              (lockedId && p.id === lockedId) ||
+              (lockedIndex !== undefined && p.index === lockedIndex)
+          ) ?? connectedPads[0];
+      }
+    } else {
+      if (!this.activePad || !this.activePad.connected) {
+        this.activePad = connectedPads.find((p) => p && p.id === this.activePad?.id) ?? connectedPads[0];
+      }
+
+      for (const pad of connectedPads) {
+        if (!pad) continue;
+        const activity = this.getPadActivity(pad);
+        if (activity > 0.3 && pad !== this.activePad) {
+          this.activePad = pad;
+        }
       }
     }
 
@@ -81,13 +114,13 @@ export class GamepadAdapter {
 
     const dashPressed = dashHeld && !this.lastDashHeld;
     const pausePressed = pauseHeld && !this.lastPauseHeld;
-    const swapRequested = swapHeld && !this.lastSwapHeld;
+    const swapRequested = locked ? false : swapHeld && !this.lastSwapHeld;
 
     this.lastDashHeld = dashHeld;
     this.lastPauseHeld = pauseHeld;
     this.lastSwapHeld = swapHeld;
 
-    if (swapRequested && connectedPads.length > 1) {
+    if (!locked && swapRequested && connectedPads.length > 1) {
       const currentIndex = connectedPads.findIndex((p) => p === pad);
       const nextPad = connectedPads[(currentIndex + 1) % connectedPads.length] ?? connectedPads[0];
       if (nextPad) {

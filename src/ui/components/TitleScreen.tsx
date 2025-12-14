@@ -26,7 +26,7 @@ export const TitleScreen = () => {
   };
 
   const startTwin = () => {
-    gameManager.startRun(undefined, { mode: "twin" });
+    setScreen("twinSetup");
   };
 
   const startInfinite = () => {
@@ -106,6 +106,11 @@ export const TitleScreen = () => {
           </button>
         </div>
         <br></br>
+        <div className="note">
+          Twin Mode now flies two ships at once. Pick who is on keyboard/mouse or which controller each pilot uses before
+          launching.
+        </div>
+        <div className="note">Infinite Mode keeps looping past wave 11 with fast-scaling enemies.</div>
         {seasonInfo && (
           <div className="season-card">
             <div className="tiny label">This Week</div>

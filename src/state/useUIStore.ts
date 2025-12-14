@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type UIScreen = "title" | "inGame" | "summary" | "howToPlay";
+export type UIScreen = "title" | "inGame" | "summary" | "howToPlay" | "twinSetup";
 
 interface UIState {
   screen: UIScreen;

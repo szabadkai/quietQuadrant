@@ -12,6 +12,7 @@ import { HUD } from "./ui/components/HUD";
 import { HowToPlay } from "./ui/components/HowToPlay";
 import { PauseMenu } from "./ui/components/PauseMenu";
 import { SummaryScreen } from "./ui/components/SummaryScreen";
+import { TwinSetup } from "./ui/components/TwinSetup";
 import { TitleScreen } from "./ui/components/TitleScreen";
 import { DevPanel } from "./ui/components/DevPanel";
 import { UpgradeOverlay } from "./ui/components/UpgradeOverlay";
@@ -142,6 +143,7 @@ function App() {
       {screen === "title" && <TitleScreen />}
       {screen === "howToPlay" && <HowToPlay />}
       {screen === "summary" && <SummaryScreen />}
+      {screen === "twinSetup" && <TwinSetup />}
     </div>
   );
 }

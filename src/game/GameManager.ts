@@ -4,7 +4,7 @@ import { MainScene } from "./scenes/MainScene";
 import { getWeeklySeed, hashSeed, Prng, pickFromList } from "../utils/seed";
 import { AFFIXES } from "../config/affixes";
 import { BOSSES } from "../config/bosses";
-import type { BossDefinition, RunMode, WeeklyAffix } from "../models/types";
+import type { BossDefinition, RunMode, TwinControlConfig, WeeklyAffix } from "../models/types";
 
 class GameManager {
   private game?: Phaser.Game;
@@ -13,6 +13,7 @@ class GameManager {
   private seasonSeedId?: string;
   private seasonSeedValue?: number;
   private seasonBoss?: BossDefinition;
+  private lastTwinControls?: TwinControlConfig;
 
   init(containerId: string) {
     if (this.game) return;
@@ -40,9 +41,12 @@ class GameManager {
     this.seasonSeedValue = seedValue;
   }
 
-  startRun(seedId?: string, options?: { randomSeed?: boolean; mode?: RunMode }) {
+  startRun(seedId?: string, options?: { randomSeed?: boolean; mode?: RunMode; twinControls?: TwinControlConfig }) {
     if (!this.game) {
       this.init("game-root");
+    }
+    if (options?.twinControls) {
+      this.lastTwinControls = options.twinControls;
     }
     this.ensureSeason(seedId, options?.randomSeed);
     if (!this.seasonSeedId || !this.seasonSeedValue) return;
@@ -51,7 +55,7 @@ class GameManager {
       this.seasonSeedValue,
       this.currentAffix,
       this.seasonBoss,
-      { mode: options?.mode }
+      { mode: options?.mode, twinControls: options?.twinControls ?? this.lastTwinControls }
     );
   }
 

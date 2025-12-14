@@ -6,6 +6,15 @@ export type RunMode = "standard" | "infinite" | "twin";
 
 export type InputMode = "keyboardMouse" | "controller";
 
+export type ControlBinding =
+  | { type: "keyboardMouse"; label?: string }
+  | { type: "gamepad"; id?: string; index?: number; label?: string };
+
+export type TwinControlConfig = {
+  p1: ControlBinding;
+  p2: ControlBinding;
+};
+
 export interface UpgradeDefinition {
   id: string;
   name: string;

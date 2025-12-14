@@ -722,6 +722,31 @@ button.tiny {
   box-shadow: 0 0 10px var(--vector-glow);
 }
 
+.twin-setup .setup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.twin-setup .setup-column .option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.option-chip {
+  text-align: left;
+  justify-content: space-between;
+  display: flex;
+  align-items: center;
+}
+
+.option-chip.selected {
+  border-color: #9ff0ff;
+  box-shadow: 0 0 0 1px rgba(159, 240, 255, 0.3);
+}
+
 @media (max-width: 900px) {
   .hud-row {
     grid-template-columns: repeat(2, 1fr);

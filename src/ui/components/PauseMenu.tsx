@@ -189,7 +189,8 @@ export const PauseMenu = () => {
           </div>
         </div>
         <div className="note">
-          Controller quick map: Left Stick move · Right Stick aims & auto-fires · LB/LT dash · Start pauses · Back/View swaps pilots in Twin Mode.
+          Controller quick map: Left Stick move · Right Stick aims & auto-fires · LB/LT dash · Start pauses. In Twin Mode,
+          each pilot uses their selected device.
         </div>
       </div>
     </div>

@@ -14,8 +14,10 @@ import { useUIStore } from "../../state/useUIStore";
 import { useMetaStore } from "../../state/useMetaStore";
 import type {
     BossDefinition,
+    ControlBinding,
     EnemySpawn,
     RunMode,
+    TwinControlConfig,
     UpgradeDefinition,
     WeeklyAffix,
 } from "../../models/types";
@@ -56,12 +58,47 @@ type AbilityState = {
     activeUntil: number;
 };
 
+type ChargeRuntime = {
+    ready: boolean;
+    holdMs: number;
+    damageBonus: number;
+    sizeBonus: number;
+    idleMs: number;
+};
+
+type ShieldState = {
+    hp: number;
+    activeUntil: number;
+    nextReadyAt: number;
+};
+
+type MomentumState = {
+    timerMs: number;
+    bonus: number;
+};
+
+type PilotRuntime = {
+    id: "p1" | "p2";
+    sprite: Phaser.Physics.Arcade.Image;
+    ability: AbilityState;
+    charge: ChargeRuntime;
+    momentum: MomentumState;
+    shield: ShieldState;
+    lastAimDirection: Phaser.Math.Vector2;
+    lastShotAt: number;
+    invulnUntil: number;
+    gamepadState: GamepadControlState;
+    control: ControlBinding;
+    shieldRing?: Phaser.GameObjects.Arc;
+};
+
 type UpgradeState = {
     [id: string]: number;
 };
 
 export class MainScene extends Phaser.Scene {
     private player?: Phaser.Physics.Arcade.Image;
+    private player2?: Phaser.Physics.Arcade.Image;
     private playerStats: PlayerStats = {
         moveSpeed: 240,
         damage: 12,
@@ -74,12 +111,6 @@ export class MainScene extends Phaser.Scene {
         health: 5,
         critChance: 0.05,
         critMultiplier: 2,
-    };
-    private ability: AbilityState = {
-        dashCooldownMs: 1600,
-        dashDurationMs: 220,
-        nextDashAt: 0,
-        activeUntil: 0,
     };
     private chargeState = {
         ready: false,
@@ -102,8 +133,6 @@ export class MainScene extends Phaser.Scene {
         shieldHp: 60,
         durationMs: 0,
         cooldownMs: 0,
-        activeUntil: 0,
-        hp: 0,
         nextReadyAt: 0,
     };
     private explosiveConfig = { stacks: 0, radius: 0, damageMultiplier: 0 };
@@ -167,7 +196,6 @@ export class MainScene extends Phaser.Scene {
     };
     private berserkConfig = { stacks: 0, maxBonus: 1 };
     private activeSynergies = new Set<string>();
-    private invulnUntil = 0;
     private difficulty = 1;
     private bossMaxHealth = 0;
 
@@ -175,6 +203,7 @@ export class MainScene extends Phaser.Scene {
     private enemyBullets!: Phaser.Physics.Arcade.Group;
     private enemies!: Phaser.Physics.Arcade.Group;
     private xpPickups!: Phaser.Physics.Arcade.Group;
+    private playersGroup!: Phaser.Physics.Arcade.Group;
     private lowGraphics = false;
     private starfieldLayers: {
         sprite: Phaser.GameObjects.TileSprite;
@@ -198,7 +227,6 @@ export class MainScene extends Phaser.Scene {
     private nextXpThreshold = 12;
     private pendingUpgradeOptions: UpgradeDefinition[] = [];
     private upgradeStacks: UpgradeState = {};
-    private lastShotAt = 0;
     private nextWaveCheckAt = 0;
     private intermissionActive = false;
     private intermissionRemainingMs = 0;
@@ -209,7 +237,6 @@ export class MainScene extends Phaser.Scene {
     private bossNextPatternAt = 0;
     private screenBounds!: Phaser.Geom.Rectangle;
     private elapsedAccumulator = 0;
-    private shieldRing?: Phaser.GameObjects.Arc;
     private rng = new Prng(1);
     private seedId = "week-0";
     private bossTemplate: BossDefinition = BOSSES[0];
@@ -218,6 +245,7 @@ export class MainScene extends Phaser.Scene {
     private bossPatternCursor = 0;
     private bossSpinAngle = 0;
     private runMode: RunMode = "standard";
+    private twinControls?: TwinControlConfig;
     private infiniteMode = false;
     private bossCleared = false;
     private baseDifficulty = 1;
@@ -226,17 +254,9 @@ export class MainScene extends Phaser.Scene {
     private enemyDamageTakenMultiplier = 1;
     private inputMode: "keyboardMouse" | "controller" = "keyboardMouse";
     private gamepadAdapter?: GamepadAdapter;
-    private gamepadState: GamepadControlState = {
-        hasGamepad: false,
-        usingGamepad: false,
-        move: new Phaser.Math.Vector2(0, 0),
-        aim: new Phaser.Math.Vector2(0, 0),
-        fireActive: false,
-        dashPressed: false,
-        pausePressed: false,
-        swapRequested: false,
-    };
-    private lastAimDirection = new Phaser.Math.Vector2(1, 0);
+    private gamepadAdapterP2?: GamepadAdapter;
+    private playerState?: PilotRuntime;
+    private playerTwoState?: PilotRuntime;
 
     constructor() {
         super("MainScene");
@@ -258,7 +278,9 @@ export class MainScene extends Phaser.Scene {
         this.setupVisuals();
         this.setupInput();
         this.gamepadAdapter = new GamepadAdapter(this);
+        this.gamepadAdapterP2 = new GamepadAdapter(this);
         this.setupGroups();
+        this.spawnPlayers();
         this.setupCollisions();
     }
 
@@ -267,8 +289,20 @@ export class MainScene extends Phaser.Scene {
         seedValue: number,
         affix?: WeeklyAffix,
         bossOverride?: BossDefinition,
-        options?: { mode?: RunMode }
+        options?: { mode?: RunMode; twinControls?: TwinControlConfig }
     ) {
+        if (!this.physics || !this.physics.world) {
+            this.events.once(Phaser.Scenes.Events.CREATE, () =>
+                this.startNewRun(
+                    seedId,
+                    seedValue,
+                    affix,
+                    bossOverride,
+                    options
+                )
+            );
+            return;
+        }
         this.seedId = seedId;
         this.rng = new Prng(seedValue);
         const bossPool = BOSSES.length > 0 ? BOSSES : [this.bossTemplate];
@@ -279,6 +313,7 @@ export class MainScene extends Phaser.Scene {
         this.bossPatternCursor = 0;
         this.bossSpinAngle = 0;
         this.runMode = options?.mode ?? "standard";
+        this.twinControls = options?.twinControls;
         this.infiniteMode = this.runMode === "infinite";
         this.bossCleared = false;
         this.physics.world.resume();
@@ -351,29 +386,28 @@ export class MainScene extends Phaser.Scene {
         if (!this.lowGraphics) {
             this.updateStarfield(dt);
         }
-        if (!this.runActive || !this.player) return;
+        if (!this.runActive || !this.playerState) return;
         const runStatus = useRunStore.getState().status;
+        const activePilots = this.getActivePilots();
+        if (activePilots.length === 0) return;
 
-        const gamepadState =
-            this.gamepadAdapter?.update() ??
-            this.gamepadState ??
-            ({
-                hasGamepad: false,
-                usingGamepad: false,
-                move: new Phaser.Math.Vector2(0, 0),
-                aim: new Phaser.Math.Vector2(0, 0),
-                fireActive: false,
-                dashPressed: false,
-                pausePressed: false,
-                swapRequested: false,
-            } as GamepadControlState);
-        this.gamepadState = gamepadState;
-        if (gamepadState.usingGamepad) {
-            this.setInputMode("controller");
-        } else if (this.isPointerDown()) {
-            this.setInputMode("keyboardMouse");
-        }
-        this.handleGamepadMetaInputs(gamepadState);
+        const controlSnapshots = activePilots.map((pilot) => {
+            const binding = this.resolveControlBinding(pilot.id);
+            const controls = this.readControlsForPilot(pilot, binding);
+            pilot.control = binding;
+            pilot.gamepadState = controls;
+            if (controls.usingGamepad) {
+                this.setInputMode("controller");
+            } else if (
+                binding.type === "keyboardMouse" &&
+                this.isPointerDown()
+            ) {
+                this.setInputMode("keyboardMouse");
+            }
+            this.handleGamepadMetaInputs(controls);
+            return { pilot, binding, controls };
+        });
+
         if (runStatus !== "running") return;
         this.elapsedAccumulator += dt;
         if (this.elapsedAccumulator >= 0.2) {
@@ -381,22 +415,23 @@ export class MainScene extends Phaser.Scene {
             this.elapsedAccumulator = 0;
         }
 
-        this.handlePlayerMovement(dt, gamepadState);
-        this.updateMomentum(dt);
-        const fireHeld =
-            gamepadState.fireActive ||
-            this.input.activePointer?.isDown ||
-            this.input.mousePointer?.isDown;
-        this.updateChargeState(dt, fireHeld);
+        controlSnapshots.forEach(({ pilot, binding, controls }) => {
+            this.handlePlayerMovement(pilot, dt, controls, binding);
+            this.updateMomentum(pilot, dt, controls, binding);
+            const fireHeld =
+                controls.fireActive ||
+                (binding.type === "keyboardMouse" && this.isPointerDown());
+            this.updateChargeState(pilot, dt, fireHeld);
+            this.handleShooting(pilot, controls, binding, fireHeld);
+        });
         this.tickShieldTimers();
-        this.handleShooting(gamepadState);
+        controlSnapshots.forEach(({ pilot }) => this.updateShieldVisual(pilot));
         this.handleEnemies();
         this.handleHeatseekingProjectiles(dt);
         this.handleProjectileBounds();
         this.handleXpAttraction(dt);
         this.handleBossPatterns();
         this.handleWaveIntermission(dt);
-        this.updateShieldVisual();
 
         if (
             !this.intermissionActive &&
@@ -462,10 +497,12 @@ export class MainScene extends Phaser.Scene {
                 break;
         }
         useRunStore.getState().actions.unlockSynergy(id);
-        if (this.player && !this.lowGraphics) {
+        const anchor =
+            this.playerState?.sprite ?? this.playerTwoState?.sprite ?? null;
+        if (anchor && !this.lowGraphics) {
             this.spawnBurstVisual(
-                this.player.x,
-                this.player.y,
+                anchor.x,
+                anchor.y,
                 38 * OBJECT_SCALE,
                 COLOR_OVERLOAD,
                 0.85
@@ -603,7 +640,6 @@ export class MainScene extends Phaser.Scene {
             g.fillStyle(0xf4f6fb, 0.9);
             g.fillTriangle(c - 1, c - 4, c + 3, c, c - 1, c + 4);
         });
-        this.spawnPlayer();
     }
 
     private createStarfieldTextures() {
@@ -950,9 +986,65 @@ export class MainScene extends Phaser.Scene {
         }
     }
 
-    private spawnPlayer() {
+    private defaultAbility(): AbilityState {
+        return {
+            dashCooldownMs: 1600,
+            dashDurationMs: 220,
+            nextDashAt: 0,
+            activeUntil: 0,
+        };
+    }
+
+    private defaultChargeRuntime(): ChargeRuntime {
+        return {
+            ready: false,
+            holdMs: 0,
+            damageBonus: 0.9,
+            sizeBonus: 0.2,
+            idleMs: 1000,
+        };
+    }
+
+    private defaultShieldState(): ShieldState {
+        return { hp: 0, activeUntil: 0, nextReadyAt: 0 };
+    }
+
+    private defaultMomentumState(): MomentumState {
+        return { timerMs: 0, bonus: 0 };
+    }
+
+    private makePilotRuntime(
+        id: "p1" | "p2",
+        sprite: Phaser.Physics.Arcade.Image,
+        control: ControlBinding
+    ): PilotRuntime {
+        return {
+            id,
+            sprite,
+            ability: this.defaultAbility(),
+            charge: this.defaultChargeRuntime(),
+            momentum: this.defaultMomentumState(),
+            shield: this.defaultShieldState(),
+            lastAimDirection: new Phaser.Math.Vector2(1, 0),
+            lastShotAt: 0,
+            invulnUntil: 0,
+            control,
+            gamepadState: {
+                hasGamepad: !!this.input.gamepad,
+                usingGamepad: false,
+                move: new Phaser.Math.Vector2(0, 0),
+                aim: new Phaser.Math.Vector2(0, 0),
+                fireActive: false,
+                dashPressed: false,
+                pausePressed: false,
+                swapRequested: false,
+            },
+        };
+    }
+
+    private spawnPlayers() {
         this.player = this.physics.add
-            .image(GAME_WIDTH / 2, GAME_HEIGHT / 2, "player")
+            .image(GAME_WIDTH / 2 - 20, GAME_HEIGHT / 2, "player")
             .setScale(OBJECT_SCALE)
             .setDepth(1);
         this.player.setCollideWorldBounds(true);
@@ -963,6 +1055,153 @@ export class MainScene extends Phaser.Scene {
             28 * OBJECT_SCALE,
             true
         );
+
+        this.player2 = this.physics.add
+            .image(GAME_WIDTH / 2 + 20, GAME_HEIGHT / 2, "player")
+            .setScale(OBJECT_SCALE)
+            .setDepth(1);
+        this.player2.setCollideWorldBounds(true);
+        this.player2.setDamping(true);
+        this.player2.setDrag(0.95, 0.95);
+        (this.player2.body as Phaser.Physics.Arcade.Body).setSize(
+            28 * OBJECT_SCALE,
+            28 * OBJECT_SCALE,
+            true
+        );
+        this.player2.setVisible(false);
+        this.player2.setActive(false);
+        (this.player2.body as Phaser.Physics.Arcade.Body).enable = false;
+
+        this.playersGroup.addMultiple([this.player, this.player2]);
+
+        this.playerState = this.makePilotRuntime("p1", this.player, {
+            type: "keyboardMouse",
+        });
+        this.playerTwoState = this.makePilotRuntime("p2", this.player2, {
+            type: "gamepad",
+        });
+    }
+
+    private getPilotBySprite(
+        sprite: Phaser.Physics.Arcade.Image
+    ): PilotRuntime | undefined {
+        if (this.playerState?.sprite === sprite) return this.playerState;
+        if (this.playerTwoState?.sprite === sprite) return this.playerTwoState;
+        return undefined;
+    }
+
+    private isPilotActive(pilot?: PilotRuntime) {
+        if (!pilot) return false;
+        const body = pilot.sprite.body as Phaser.Physics.Arcade.Body | null;
+        return (
+            pilot.sprite.visible &&
+            pilot.sprite.active &&
+            !!body?.enable &&
+            pilot.sprite.alpha > 0
+        );
+    }
+
+    private getActivePilots(): PilotRuntime[] {
+        const pilots: PilotRuntime[] = [];
+        if (this.isPilotActive(this.playerState)) {
+            pilots.push(this.playerState!);
+        }
+        if (this.runMode === "twin" && this.isPilotActive(this.playerTwoState)) {
+            pilots.push(this.playerTwoState!);
+        }
+        return pilots;
+    }
+
+    private getNearestPilot(x: number, y: number): PilotRuntime | null {
+        const pilots = this.getActivePilots();
+        if (pilots.length === 0) return null;
+        let nearest: PilotRuntime | null = null;
+        let bestDist = Number.POSITIVE_INFINITY;
+        pilots.forEach((pilot) => {
+            const dx = pilot.sprite.x - x;
+            const dy = pilot.sprite.y - y;
+            const distSq = dx * dx + dy * dy;
+            if (distSq < bestDist) {
+                bestDist = distSq;
+                nearest = pilot;
+            }
+        });
+        return nearest;
+    }
+
+    private emptyControlState(): GamepadControlState {
+        return {
+            hasGamepad: !!this.input.gamepad,
+            usingGamepad: false,
+            move: new Phaser.Math.Vector2(0, 0),
+            aim: new Phaser.Math.Vector2(0, 0),
+            fireActive: false,
+            dashPressed: false,
+            pausePressed: false,
+            swapRequested: false,
+        };
+    }
+
+    private resolveControlBinding(pilotId: "p1" | "p2"): ControlBinding {
+        if (this.runMode !== "twin") {
+            return (
+                this.twinControls?.[pilotId] ?? {
+                    type: "keyboardMouse",
+                    label: "Keyboard + Mouse",
+                }
+            );
+        }
+        const fallback: ControlBinding =
+            pilotId === "p1"
+                ? { type: "keyboardMouse", label: "Keyboard + Mouse" }
+                : { type: "gamepad", label: "Gamepad" };
+        return this.twinControls?.[pilotId] ?? fallback;
+    }
+
+    private readKeyboardDirection() {
+        const dir = new Phaser.Math.Vector2(0, 0);
+        if (this.cursors.left?.isDown || this.wasd.A.isDown) dir.x -= 1;
+        if (this.cursors.right?.isDown || this.wasd.D.isDown) dir.x += 1;
+        if (this.cursors.up?.isDown || this.wasd.W.isDown) dir.y -= 1;
+        if (this.cursors.down?.isDown || this.wasd.S.isDown) dir.y += 1;
+        return dir;
+    }
+
+    private readKeyboardControls(pilot: PilotRuntime): GamepadControlState {
+        const dir = this.readKeyboardDirection();
+        const aim = this.getPointerAim(pilot);
+        return {
+            hasGamepad: !!this.input.gamepad,
+            usingGamepad: false,
+            move: dir,
+            aim,
+            fireActive: this.isPointerDown(),
+            dashPressed: Phaser.Input.Keyboard.JustDown(this.wasd.SHIFT),
+            pausePressed: false,
+            swapRequested: false,
+        };
+    }
+
+    private readControlsForPilot(
+        pilot: PilotRuntime,
+        binding: ControlBinding
+    ): GamepadControlState {
+        if (this.runMode !== "twin") {
+            return (
+                this.gamepadAdapter?.update() ??
+                pilot.gamepadState ??
+                this.emptyControlState()
+            );
+        }
+        if (binding.type === "gamepad") {
+            const adapter =
+                pilot.id === "p1" ? this.gamepadAdapter : this.gamepadAdapterP2;
+            return (
+                adapter?.update(binding.id, binding.index) ??
+                this.emptyControlState()
+            );
+        }
+        return this.readKeyboardControls(pilot);
     }
 
     private setupInput() {
@@ -979,6 +1218,11 @@ export class MainScene extends Phaser.Scene {
     }
 
     private setupGroups() {
+        this.playersGroup = this.physics.add.group({
+            classType: Phaser.Physics.Arcade.Image,
+            maxSize: 2,
+            runChildUpdate: false,
+        });
         this.bullets = this.physics.add.group({
             classType: Phaser.Physics.Arcade.Image,
             maxSize: 128,
@@ -1025,23 +1269,34 @@ export class MainScene extends Phaser.Scene {
             this
         );
         this.physics.add.overlap(
-            this.player!,
+            this.playersGroup,
             this.enemies,
-            (_player, enemy) =>
+            (playerObj, enemy) => {
+                const pilot = this.getPilotBySprite(
+                    playerObj as Phaser.Physics.Arcade.Image
+                );
+                if (!pilot) return;
                 this.handlePlayerDamage(
+                    pilot,
                     enemy as Phaser.Physics.Arcade.Image,
                     1,
                     true
-                ),
+                );
+            },
             undefined,
             this
         );
         this.physics.add.overlap(
-            this.player!,
+            this.playersGroup,
             this.enemyBullets,
-            (_player, bullet) => {
+            (playerObj, bullet) => {
+                const pilot = this.getPilotBySprite(
+                    playerObj as Phaser.Physics.Arcade.Image
+                );
+                if (!pilot) return;
                 bullet.destroy();
                 this.handlePlayerDamage(
+                    pilot,
                     bullet as Phaser.Physics.Arcade.Image,
                     1,
                     false
@@ -1051,7 +1306,7 @@ export class MainScene extends Phaser.Scene {
             this
         );
         this.physics.add.overlap(
-            this.player!,
+            this.playersGroup,
             this.xpPickups,
             (_player, pickup) =>
                 this.collectXp(pickup as Phaser.Physics.Arcade.Image),
@@ -1073,19 +1328,17 @@ export class MainScene extends Phaser.Scene {
 
     private resetState() {
         const settings = useMetaStore.getState().settings;
+        const twinActive = this.runMode === "twin";
+        if (
+            !this.player ||
+            !this.player2 ||
+            !this.playerState ||
+            !this.playerTwoState
+        ) {
+            this.spawnPlayers();
+        }
         this.lowGraphics = settings.lowGraphicsMode;
         this.inputMode = "keyboardMouse";
-        this.lastAimDirection.set(1, 0);
-        this.gamepadState = {
-            hasGamepad: !!this.input.gamepad,
-            usingGamepad: false,
-            move: new Phaser.Math.Vector2(0, 0),
-            aim: new Phaser.Math.Vector2(0, 0),
-            fireActive: false,
-            dashPressed: false,
-            pausePressed: false,
-            swapRequested: false,
-        };
         this.syncStarfieldVisibility();
         this.backgroundFxTween?.stop();
         this.backgroundFxTween = undefined;
@@ -1138,8 +1391,6 @@ export class MainScene extends Phaser.Scene {
             shieldHp: 60,
             durationMs: 0,
             cooldownMs: 0,
-            activeUntil: 0,
-            hp: 0,
             nextReadyAt: 0,
         };
         this.explosiveConfig = { stacks: 0, radius: 0, damageMultiplier: 0 };
@@ -1206,20 +1457,12 @@ export class MainScene extends Phaser.Scene {
         };
         this.berserkConfig = { stacks: 0, maxBonus: 1 };
         this.activeSynergies.clear();
-        this.invulnUntil = 0;
-        this.ability = {
-            dashCooldownMs: 1600,
-            dashDurationMs: 220,
-            nextDashAt: 0,
-            activeUntil: 0,
-        };
         this.waveIndex = 0;
         this.xp = 0;
         this.level = 1;
         this.nextXpThreshold = 12;
         this.upgradeStacks = {};
         this.pendingUpgradeOptions = [];
-        this.lastShotAt = this.time.now;
         this.nextWaveCheckAt = 0;
         this.intermissionActive = false;
         this.pendingWaveIndex = null;
@@ -1235,35 +1478,71 @@ export class MainScene extends Phaser.Scene {
         this.bullets.clear(true, true);
         this.enemyBullets.clear(true, true);
         this.xpPickups.clear(true, true);
-        this.player?.setPosition(GAME_WIDTH / 2, GAME_HEIGHT / 2);
-        const body = this.player?.body as
-            | Phaser.Physics.Arcade.Body
-            | undefined;
-        body?.setVelocity(0, 0);
-        body?.setAcceleration(0, 0);
+        const offset = twinActive ? 32 : 0;
+        const center = { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 };
+        const resetPilot = (
+            pilot: PilotRuntime | undefined,
+            pos: { x: number; y: number },
+            active: boolean
+        ) => {
+            if (!pilot) return;
+            pilot.ability = this.defaultAbility();
+            pilot.charge = this.defaultChargeRuntime();
+            pilot.momentum = this.defaultMomentumState();
+            pilot.shield = this.defaultShieldState();
+            pilot.lastAimDirection.set(1, 0);
+            pilot.lastShotAt = this.time.now;
+            pilot.invulnUntil = 0;
+            pilot.control = this.resolveControlBinding(pilot.id);
+            pilot.gamepadState = this.emptyControlState();
+            pilot.shieldRing?.setVisible(false);
+            pilot.sprite.setPosition(pos.x, pos.y);
+            pilot.sprite.setActive(active);
+            pilot.sprite.setVisible(active);
+            const body = pilot.sprite
+                .body as Phaser.Physics.Arcade.Body | undefined;
+            if (body) {
+                body.enable = active;
+                body.setVelocity(0, 0);
+                body.setAcceleration(0, 0);
+            }
+            const adapter =
+                pilot.id === "p1" ? this.gamepadAdapter : this.gamepadAdapterP2;
+            if (pilot.control.type === "gamepad") {
+                adapter?.setLockedPad(pilot.control.id, pilot.control.index);
+            } else {
+                adapter?.setLockedPad(undefined, undefined);
+            }
+        };
+        resetPilot(this.playerState, { x: center.x - offset, y: center.y }, true);
+        resetPilot(
+            this.playerTwoState,
+            { x: center.x + offset, y: center.y },
+            twinActive
+        );
         const actions = useRunStore.getState().actions;
         actions.setVitals(this.playerStats.health, this.playerStats.maxHealth);
         actions.setXp(this.level, this.xp, this.nextXpThreshold);
         actions.setWaveCountdown(null, null);
-        if (this.shieldRing) {
-            this.shieldRing.setVisible(false);
-        }
     }
 
     private handlePlayerMovement(
+        pilot: PilotRuntime,
         _dt: number,
-        gamepadState: GamepadControlState
+        controls: GamepadControlState,
+        binding: ControlBinding
     ) {
-        if (!this.player) return;
-        const body = this.player.body as Phaser.Physics.Arcade.Body;
+        if (!this.isPilotActive(pilot)) return;
+        const body = pilot.sprite.body as Phaser.Physics.Arcade.Body;
         const dir = new Phaser.Math.Vector2(0, 0);
-        if (gamepadState.move.lengthSq() > 0) {
-            dir.copy(gamepadState.move);
-        } else {
-            if (this.cursors.left?.isDown || this.wasd.A.isDown) dir.x -= 1;
-            if (this.cursors.right?.isDown || this.wasd.D.isDown) dir.x += 1;
-            if (this.cursors.up?.isDown || this.wasd.W.isDown) dir.y -= 1;
-            if (this.cursors.down?.isDown || this.wasd.S.isDown) dir.y += 1;
+
+        if (controls.move.lengthSq() > 0) {
+            dir.copy(controls.move);
+        } else if (
+            binding.type === "keyboardMouse" ||
+            this.runMode !== "twin"
+        ) {
+            dir.copy(this.readKeyboardDirection());
         }
 
         if (dir.lengthSq() > 0) {
@@ -1276,59 +1555,75 @@ export class MainScene extends Phaser.Scene {
             body.setAcceleration(0, 0);
         }
 
-        const isDashing = this.time.now < this.ability.activeUntil;
+        const isDashing = this.time.now < pilot.ability.activeUntil;
         const speed = isDashing
             ? this.playerStats.moveSpeed * 2.2
             : this.playerStats.moveSpeed;
         body.setMaxSpeed(speed);
 
-        if (
-            Phaser.Input.Keyboard.JustDown(this.wasd.SHIFT) ||
-            gamepadState.dashPressed
-        ) {
-            this.tryDash(dir);
+        const dashPressed =
+            controls.dashPressed ||
+            (binding.type === "keyboardMouse" &&
+                Phaser.Input.Keyboard.JustDown(this.wasd.SHIFT));
+        if (dashPressed) {
+            this.tryDash(pilot, dir);
         }
 
-        const aimDir = this.getAimDirection(gamepadState);
-        this.player.rotation = Phaser.Math.Angle.Between(
+        const aimDir = this.getAimDirection(
+            pilot,
+            controls,
+            binding.type === "keyboardMouse" || this.runMode !== "twin"
+        );
+        pilot.sprite.rotation = Phaser.Math.Angle.Between(
             0,
             0,
             aimDir.x,
             aimDir.y
         );
 
-        this.player.x = Phaser.Math.Clamp(
-            this.player.x,
+        pilot.sprite.x = Phaser.Math.Clamp(
+            pilot.sprite.x,
             this.screenBounds.left,
             this.screenBounds.right
         );
-        this.player.y = Phaser.Math.Clamp(
-            this.player.y,
+        pilot.sprite.y = Phaser.Math.Clamp(
+            pilot.sprite.y,
             this.screenBounds.top,
             this.screenBounds.bottom
         );
     }
 
-    private getAimDirection(gamepadState: GamepadControlState) {
-        if (!this.player) return this.lastAimDirection.clone();
-        if (gamepadState.aim.lengthSq() > 0) {
-            const aim = gamepadState.aim.clone().normalize();
-            this.lastAimDirection.copy(aim);
+    private getAimDirection(
+        pilot: PilotRuntime,
+        controls: GamepadControlState,
+        allowPointer: boolean
+    ) {
+        if (controls.aim.lengthSq() > 0) {
+            const aim = controls.aim.clone().normalize();
+            pilot.lastAimDirection.copy(aim);
             return aim;
         }
+        if (allowPointer) {
+            return this.getPointerAim(pilot);
+        }
+        return pilot.lastAimDirection.clone();
+    }
+
+    private getPointerAim(pilot: PilotRuntime) {
+        if (!this.isPilotActive(pilot)) return pilot.lastAimDirection.clone();
         const pointer = this.input.activePointer;
         if (pointer) {
             const aimVec = new Phaser.Math.Vector2(
-                pointer.worldX - this.player.x,
-                pointer.worldY - this.player.y
+                pointer.worldX - pilot.sprite.x,
+                pointer.worldY - pilot.sprite.y
             );
             if (aimVec.lengthSq() > 0.0001) {
                 aimVec.normalize();
-                this.lastAimDirection.copy(aimVec);
+                pilot.lastAimDirection.copy(aimVec);
                 return aimVec;
             }
         }
-        return this.lastAimDirection.clone();
+        return pilot.lastAimDirection.clone();
     }
 
     private isPointerDown() {
@@ -1361,90 +1656,113 @@ export class MainScene extends Phaser.Scene {
         }
     }
 
-    private updateChargeState(dt: number, fireHeld: boolean) {
+    private updateChargeState(
+        pilot: PilotRuntime,
+        dt: number,
+        fireHeld: boolean
+    ) {
         if (this.capacitorConfig.stacks === 0) return;
         if (fireHeld) {
-            this.chargeState.holdMs = Math.min(
+            pilot.charge.holdMs = Math.min(
                 this.capacitorConfig.idleMs,
-                this.chargeState.holdMs + dt * 1000
+                pilot.charge.holdMs + dt * 1000
             );
-            if (this.chargeState.holdMs >= this.capacitorConfig.idleMs) {
-                this.chargeState.ready = true;
+            if (pilot.charge.holdMs >= this.capacitorConfig.idleMs) {
+                pilot.charge.ready = true;
             }
         } else {
-            this.chargeState.holdMs = 0;
-            this.chargeState.ready = false;
+            pilot.charge.holdMs = 0;
+            pilot.charge.ready = false;
         }
     }
 
-    private updateMomentum(dt: number) {
-        if (this.momentumConfig.stacks === 0 || !this.player) return;
-        const body = this.player.body as Phaser.Physics.Arcade.Body;
+    private updateMomentum(
+        pilot: PilotRuntime,
+        dt: number,
+        _controls: GamepadControlState,
+        _binding: ControlBinding
+    ) {
+        if (this.momentumConfig.stacks === 0 || !this.isPilotActive(pilot))
+            return;
+        const body = pilot.sprite.body as Phaser.Physics.Arcade.Body;
         const speed = body.velocity.length();
         const moving = speed > 30;
         if (moving) {
-            this.momentumConfig.timerMs = Math.min(
+            pilot.momentum.timerMs = Math.min(
                 this.momentumConfig.timeToMaxMs,
-                this.momentumConfig.timerMs + dt * 1000
+                pilot.momentum.timerMs + dt * 1000
             );
         } else {
-            this.momentumConfig.timerMs = Math.max(
+            pilot.momentum.timerMs = Math.max(
                 0,
-                this.momentumConfig.timerMs - dt * 800
+                pilot.momentum.timerMs - dt * 800
             );
         }
         const ratio = Phaser.Math.Clamp(
-            this.momentumConfig.timerMs / this.momentumConfig.timeToMaxMs,
+            pilot.momentum.timerMs / this.momentumConfig.timeToMaxMs,
             0,
             1
         );
-        this.momentumConfig.bonus = this.momentumConfig.ramp * ratio;
+        pilot.momentum.bonus = this.momentumConfig.ramp * ratio;
     }
 
     private tickShieldTimers() {
-        if (
-            this.shieldConfig.hp > 0 &&
-            this.time.now > this.shieldConfig.activeUntil
-        ) {
-            this.shieldConfig.hp = 0;
-            this.shieldConfig.activeUntil = 0;
-        }
+        const now = this.time.now;
+        const handle = (pilot?: PilotRuntime) => {
+            if (!pilot) return;
+            if (pilot.shield.hp > 0 && now > pilot.shield.activeUntil) {
+                pilot.shield.hp = 0;
+                pilot.shield.activeUntil = 0;
+            }
+        };
+        handle(this.playerState);
+        handle(this.playerTwoState);
     }
 
-    private tryDash(dir: Phaser.Math.Vector2) {
-        if (this.time.now < this.ability.nextDashAt) return;
+    private tryDash(pilot: PilotRuntime, dir: Phaser.Math.Vector2) {
+        if (this.time.now < pilot.ability.nextDashAt) return;
         const dashDir =
             dir.lengthSq() > 0
                 ? dir.clone().normalize()
                 : new Phaser.Math.Vector2(1, 0);
-        const body = this.player!.body as Phaser.Physics.Arcade.Body;
+        const body = pilot.sprite.body as Phaser.Physics.Arcade.Body;
         body.setVelocity(
             dashDir.x * this.playerStats.moveSpeed * 3,
             dashDir.y * this.playerStats.moveSpeed * 3
         );
-        this.ability.activeUntil = this.time.now + this.ability.dashDurationMs;
-        this.invulnUntil = this.ability.activeUntil;
-        this.ability.nextDashAt = this.time.now + this.ability.dashCooldownMs;
+        pilot.ability.activeUntil =
+            this.time.now + pilot.ability.dashDurationMs;
+        pilot.invulnUntil = pilot.ability.activeUntil;
+        pilot.ability.nextDashAt =
+            this.time.now + pilot.ability.dashCooldownMs;
         this.spawnDashTrail(
-            new Phaser.Math.Vector2(this.player!.x, this.player!.y),
+            new Phaser.Math.Vector2(pilot.sprite.x, pilot.sprite.y),
             dashDir
         );
-        this.spawnAfterimageShots(dashDir);
+        this.spawnAfterimageShots(dashDir, pilot);
         this.spawnDashSparkExplosion(
-            new Phaser.Math.Vector2(this.player!.x, this.player!.y),
+            new Phaser.Math.Vector2(pilot.sprite.x, pilot.sprite.y),
             dashDir
         );
     }
 
-    private handleShooting(gamepadState: GamepadControlState) {
-        if (!this.player) return;
-        const pointerDown = this.isPointerDown();
-        const fireRequested = pointerDown || gamepadState.fireActive;
+    private handleShooting(
+        pilot: PilotRuntime,
+        controls: GamepadControlState,
+        binding: ControlBinding,
+        fireHeld: boolean
+    ) {
+        if (!this.isPilotActive(pilot)) return;
+        const fireRequested = fireHeld || controls.fireActive;
         if (!fireRequested) return;
 
         const useChargeMode = this.capacitorConfig.stacks > 0;
-        const isCharged = useChargeMode && this.chargeState.ready;
-        const dir = this.getAimDirection(gamepadState);
+        const isCharged = useChargeMode && pilot.charge.ready;
+        const dir = this.getAimDirection(
+            pilot,
+            controls,
+            binding.type === "keyboardMouse" || this.runMode !== "twin"
+        );
         const spreadCount = this.playerStats.projectiles;
         const spreadStepDeg = this.spreadConfig.spreadDegrees;
         soundManager.playSfx("shoot");
@@ -1458,18 +1776,18 @@ export class MainScene extends Phaser.Scene {
             (isCharged ? this.capacitorConfig.chargePierceBonus : 0);
         const bounce = this.playerStats.bounce;
         const tags = this.buildProjectileTags(isCharged);
-        const fireRateBonus = 1 + this.momentumConfig.bonus;
+        const fireRateBonus = 1 + pilot.momentum.bonus;
         const adjustedFireRate =
             this.playerStats.fireRate *
             fireRateBonus *
             (1 + this.getBerserkBonus());
         const cooldown = 1000 / adjustedFireRate;
-        if (this.time.now < this.lastShotAt + cooldown) return;
+        if (this.time.now < pilot.lastShotAt + cooldown) return;
         if (!this.payBloodFuelCost()) return;
-        this.lastShotAt = this.time.now;
+        pilot.lastShotAt = this.time.now;
         if (useChargeMode && isCharged) {
-            this.chargeState.ready = false;
-            this.chargeState.holdMs = 0;
+            pilot.charge.ready = false;
+            pilot.charge.holdMs = 0;
         }
 
         for (let i = 0; i < spreadCount; i++) {
@@ -1480,8 +1798,8 @@ export class MainScene extends Phaser.Scene {
                       Phaser.Math.DegToRad(spreadStepDeg);
             const shotDir = this.applyInaccuracy(dir.clone().rotate(offset));
             this.spawnBullet({
-                x: this.player.x,
-                y: this.player.y,
+                x: pilot.sprite.x,
+                y: pilot.sprite.y,
                 dir: shotDir,
                 damage: baseDamage * chargeDamageMultiplier,
                 pierce,
@@ -1493,7 +1811,7 @@ export class MainScene extends Phaser.Scene {
             });
         }
         if (isCharged) {
-            this.spawnMuzzleFlash(this.player.x, this.player.y);
+            this.spawnMuzzleFlash(pilot.sprite.x, pilot.sprite.y);
         }
     }
 
@@ -1627,17 +1945,20 @@ export class MainScene extends Phaser.Scene {
         return true;
     }
 
-    private spawnAfterimageShots(dir: Phaser.Math.Vector2) {
+    private spawnAfterimageShots(
+        dir: Phaser.Math.Vector2,
+        pilot: PilotRuntime
+    ) {
         if (this.afterimageConfig.trailShots <= 0) return;
-        if (!this.player) return;
+        if (!this.isPilotActive(pilot)) return;
         const shots = this.afterimageConfig.trailShots;
         const spacing = 18;
         const tags = this.buildProjectileTags(false).concat(["afterimage"]);
         for (let i = 1; i <= shots; i++) {
             const offset = dir.clone().scale(-spacing * i);
             const pos = new Phaser.Math.Vector2(
-                this.player!.x + offset.x,
-                this.player!.y + offset.y
+                pilot.sprite.x + offset.x,
+                pilot.sprite.y + offset.y
             );
             const pierce = this.playerStats.pierce;
             const bounce = this.playerStats.bounce;
@@ -1764,27 +2085,46 @@ export class MainScene extends Phaser.Scene {
         });
     }
 
-    private updateShieldVisual() {
-        if (!this.shieldRing || !this.player) return;
+    private updateShieldVisual(pilot?: PilotRuntime) {
+        if (!pilot) return;
         const active =
-            this.shieldConfig.hp > 0 &&
-            this.time.now <= this.shieldConfig.activeUntil;
-        this.shieldRing.setVisible(active);
+            pilot.shield.hp > 0 && this.time.now <= pilot.shield.activeUntil;
+        if (!pilot.shieldRing && active) {
+            pilot.shieldRing = this.add
+                .arc(
+                    pilot.sprite.x,
+                    pilot.sprite.y,
+                    34 * OBJECT_SCALE,
+                    0,
+                    360,
+                    false,
+                    COLOR_ACCENT,
+                    0.2
+                )
+                .setStrokeStyle(3, COLOR_ACCENT, 0.9)
+                .setDepth(0.9);
+        }
+        if (!pilot.shieldRing) return;
+        pilot.shieldRing.setVisible(active);
         if (!active) return;
-        this.shieldRing.setPosition(this.player.x, this.player.y);
-        const remaining = this.shieldConfig.activeUntil - this.time.now;
+        pilot.shieldRing.setPosition(pilot.sprite.x, pilot.sprite.y);
+        const remaining = pilot.shield.activeUntil - this.time.now;
         const alpha = Phaser.Math.Clamp(
             remaining / this.shieldConfig.durationMs,
             0.3,
             0.8
         );
-        this.shieldRing.setAlpha(alpha);
+        pilot.shieldRing.setAlpha(alpha);
         const pulse = 1 + Math.sin(this.time.now / 120) * 0.06;
-        this.shieldRing.setScale(pulse);
+        pilot.shieldRing.setScale(pulse);
     }
 
     private handleEnemies() {
-        const player = this.player!;
+        const targetPilot = this.getNearestPilot(
+            GAME_WIDTH / 2,
+            GAME_HEIGHT / 2
+        );
+        if (!targetPilot) return;
         this.enemies.getChildren().forEach((child) => {
             const enemy = child as Phaser.Physics.Arcade.Image;
             if (!enemy.active || !enemy.visible) return;
@@ -1795,9 +2135,11 @@ export class MainScene extends Phaser.Scene {
                 slowUntil && slowUntil > this.time.now
                     ? (enemy.getData("slowFactor") as number | undefined) ?? 1
                     : 1;
+            const pilot =
+                this.getNearestPilot(enemy.x, enemy.y) ?? targetPilot;
             const targetVec = new Phaser.Math.Vector2(
-                player.x - enemy.x,
-                player.y - enemy.y
+                pilot.sprite.x - enemy.x,
+                pilot.sprite.y - enemy.y
             );
             const dist = targetVec.length();
             targetVec.normalize();
@@ -1821,13 +2163,20 @@ export class MainScene extends Phaser.Scene {
                 } else {
                     enemy.setVelocity(0, 0);
                 }
-                this.tryEnemyShot(enemy, player);
+                this.tryEnemyShot(
+                    enemy,
+                    new Phaser.Math.Vector2(pilot.sprite.x, pilot.sprite.y)
+                );
             } else if (kind === "mass") {
                 enemy.setVelocity(
                     targetVec.x * speed * 0.7 * slowFactor,
                     targetVec.y * speed * 0.7 * slowFactor
                 );
-                this.tryEnemyShot(enemy, player, true);
+                this.tryEnemyShot(
+                    enemy,
+                    new Phaser.Math.Vector2(pilot.sprite.x, pilot.sprite.y),
+                    true
+                );
             } else if (kind === "boss") {
                 this.updateBossMovement(enemy);
             }
@@ -1845,9 +2194,14 @@ export class MainScene extends Phaser.Scene {
         const orbitY = 90;
         let targetX = centerX + Math.cos(t / 1400) * orbitX;
         let targetY = centerY + Math.sin(t / 1200) * orbitY;
-        if (this.player) {
-            targetX = Phaser.Math.Linear(targetX, this.player.x, 0.12);
-            targetY = Phaser.Math.Linear(targetY, this.player.y - 80, 0.08);
+        const targetPilot = this.getNearestPilot(boss.x, boss.y);
+        if (targetPilot) {
+            targetX = Phaser.Math.Linear(targetX, targetPilot.sprite.x, 0.12);
+            targetY = Phaser.Math.Linear(
+                targetY,
+                targetPilot.sprite.y - 80,
+                0.08
+            );
         }
         const dir = new Phaser.Math.Vector2(targetX - boss.x, targetY - boss.y);
         const dist = dir.length();
@@ -1947,19 +2301,20 @@ export class MainScene extends Phaser.Scene {
     }
 
     private handleXpAttraction(dt: number) {
-        if (!this.player) return;
-        const px = this.player.x;
-        const py = this.player.y;
         const radius = XP_ATTRACT_RADIUS * this.magnetConfig.radiusMult;
         const maxDistSq = radius * radius;
         const lerp = Phaser.Math.Clamp(dt * XP_ATTRACT_LERP_RATE, 0, 1);
+        const pilots = this.getActivePilots();
+        if (pilots.length === 0) return;
 
         this.xpPickups.getChildren().forEach((child) => {
             const pickup = child as Phaser.Physics.Arcade.Image;
             if (!pickup.active || !pickup.visible) return;
 
-            const dx = px - pickup.x;
-            const dy = py - pickup.y;
+            const nearest = this.getNearestPilot(pickup.x, pickup.y);
+            if (!nearest) return;
+            const dx = nearest.sprite.x - pickup.x;
+            const dy = nearest.sprite.y - pickup.y;
             const distSq = dx * dx + dy * dy;
             const body = pickup.body as Phaser.Physics.Arcade.Body;
             const alreadyMagnetized = pickup.getData("magnetized") === true;
@@ -2083,9 +2438,14 @@ export class MainScene extends Phaser.Scene {
     }
 
     private bossPatternAimedBurst() {
-        if (!this.boss || !this.player) return;
+        if (!this.boss) return;
+        const targetPilot = this.getNearestPilot(this.boss.x, this.boss.y);
+        if (!targetPilot) return;
         const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-        const target = new Phaser.Math.Vector2(this.player.x, this.player.y)
+        const target = new Phaser.Math.Vector2(
+            targetPilot.sprite.x,
+            targetPilot.sprite.y
+        )
             .subtract(center)
             .normalize();
         const spread = Phaser.Math.DegToRad(8);
@@ -2134,9 +2494,14 @@ export class MainScene extends Phaser.Scene {
     }
 
     private bossPatternConeVolley() {
-        if (!this.boss || !this.player) return;
+        if (!this.boss) return;
+        const targetPilot = this.getNearestPilot(this.boss.x, this.boss.y);
+        if (!targetPilot) return;
         const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-        const target = new Phaser.Math.Vector2(this.player.x, this.player.y)
+        const target = new Phaser.Math.Vector2(
+            targetPilot.sprite.x,
+            targetPilot.sprite.y
+        )
             .subtract(center)
             .normalize();
         const spread = Phaser.Math.DegToRad(6);
@@ -2178,9 +2543,14 @@ export class MainScene extends Phaser.Scene {
     }
 
     private bossPatternSlam() {
-        if (!this.boss || !this.player) return;
+        if (!this.boss) return;
+        const targetPilot = this.getNearestPilot(this.boss.x, this.boss.y);
+        if (!targetPilot) return;
         const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-        const toward = new Phaser.Math.Vector2(this.player.x, this.player.y)
+        const toward = new Phaser.Math.Vector2(
+            targetPilot.sprite.x,
+            targetPilot.sprite.y
+        )
             .subtract(center)
             .normalize();
         const dir = toward.normalize();
@@ -2247,7 +2617,7 @@ export class MainScene extends Phaser.Scene {
 
     private tryEnemyShot(
         enemy: Phaser.Physics.Arcade.Image,
-        player: Phaser.Physics.Arcade.Image,
+        target: Phaser.Math.Vector2,
         heavy?: boolean
     ) {
         const nextFire = enemy.getData("nextFire") as number;
@@ -2255,8 +2625,8 @@ export class MainScene extends Phaser.Scene {
         if (!fireCooldown || this.time.now < nextFire) return;
 
         const dir = new Phaser.Math.Vector2(
-            player.x - enemy.x,
-            player.y - enemy.y
+            target.x - enemy.x,
+            target.y - enemy.y
         ).normalize();
         const speed = enemy.getData("projectileSpeed") as number;
         this.spawnEnemyBullet(enemy.x, enemy.y, dir, speed, heavy);
@@ -2734,32 +3104,43 @@ export class MainScene extends Phaser.Scene {
         if (this.shieldConfig.stacks <= 0) return;
         const now = this.time.now;
         if (now < this.shieldConfig.nextReadyAt) return;
-        this.shieldConfig.activeUntil = now + this.shieldConfig.durationMs;
-        this.shieldConfig.hp = this.shieldConfig.shieldHp;
         this.shieldConfig.nextReadyAt = now + this.shieldConfig.cooldownMs;
-        if (!this.lowGraphics) {
-            if (!this.shieldRing) {
-                this.shieldRing = this.add
-                    .circle(
-                        this.player!.x,
-                        this.player!.y,
-                        26 * OBJECT_SCALE,
-                        COLOR_PULSE,
-                        0.06
-                    )
-                    .setStrokeStyle(3, COLOR_PULSE, 0.8)
-                    .setDepth(1.5);
+        const activate = (pilot?: PilotRuntime) => {
+            if (!pilot || !this.isPilotActive(pilot)) return;
+            pilot.shield.activeUntil = now + this.shieldConfig.durationMs;
+            pilot.shield.hp = this.shieldConfig.shieldHp;
+            pilot.shield.nextReadyAt = this.shieldConfig.nextReadyAt;
+            if (!this.lowGraphics) {
+                if (!pilot.shieldRing) {
+                    pilot.shieldRing = this.add
+                        .circle(
+                            pilot.sprite.x,
+                            pilot.sprite.y,
+                            26 * OBJECT_SCALE,
+                            COLOR_PULSE,
+                            0.06
+                        )
+                        .setStrokeStyle(3, COLOR_PULSE, 0.8)
+                        .setDepth(1.5);
+                }
+                pilot.shieldRing.setVisible(true);
+                pilot.shieldRing.setAlpha(0.8);
+                pilot.shieldRing.setPosition(
+                    pilot.sprite.x,
+                    pilot.sprite.y
+                );
+                this.spawnBurstVisual(
+                    pilot.sprite.x,
+                    pilot.sprite.y,
+                    30 * OBJECT_SCALE,
+                    COLOR_PULSE,
+                    0.9
+                );
             }
-            this.shieldRing.setVisible(true);
-            this.shieldRing.setAlpha(0.8);
-            this.shieldRing.setPosition(this.player!.x, this.player!.y);
-            this.spawnBurstVisual(
-                this.player!.x,
-                this.player!.y,
-                30 * OBJECT_SCALE,
-                COLOR_PULSE,
-                0.9
-            );
+        };
+        activate(this.playerState);
+        if (this.runMode === "twin") {
+            activate(this.playerTwoState);
         }
     }
 
@@ -2982,6 +3363,16 @@ export class MainScene extends Phaser.Scene {
                 this.chargeState.idleMs = idleMs;
                 this.chargeState.damageBonus = damageBonus;
                 this.chargeState.sizeBonus = sizeBonus;
+                if (this.playerState) {
+                    this.playerState.charge.idleMs = idleMs;
+                    this.playerState.charge.damageBonus = damageBonus;
+                    this.playerState.charge.sizeBonus = sizeBonus;
+                }
+                if (this.playerTwoState) {
+                    this.playerTwoState.charge.idleMs = idleMs;
+                    this.playerTwoState.charge.damageBonus = damageBonus;
+                    this.playerTwoState.charge.sizeBonus = sizeBonus;
+                }
                 break;
             }
             case "shield-pickup": {
@@ -2994,10 +3385,11 @@ export class MainScene extends Phaser.Scene {
                     shieldHp,
                     durationMs,
                     cooldownMs,
-                    activeUntil: 0,
-                    hp: 0,
                     nextReadyAt: 0,
                 };
+                this.playerState && (this.playerState.shield = this.defaultShieldState());
+                this.playerTwoState &&
+                    (this.playerTwoState.shield = this.defaultShieldState());
                 break;
             }
             case "kinetic-siphon": {
@@ -3032,6 +3424,12 @@ export class MainScene extends Phaser.Scene {
                     timerMs: 0,
                     bonus: 0,
                 };
+                if (this.playerState) {
+                    this.playerState.momentum = this.defaultMomentumState();
+                }
+                if (this.playerTwoState) {
+                    this.playerTwoState.momentum = this.defaultMomentumState();
+                }
                 break;
             }
             case "split-shot": {
@@ -3428,12 +3826,13 @@ export class MainScene extends Phaser.Scene {
     }
 
     private handlePlayerDamage(
+        pilot: PilotRuntime,
         _source: Phaser.Physics.Arcade.Image,
         amount: number,
         isContact: boolean
     ) {
         const now = this.time.now;
-        if (now < this.invulnUntil) return;
+        if (now < pilot.invulnUntil) return;
         const contactMultiplier = isContact
             ? this.stabilizerConfig.contactMultiplier
             : 1;
@@ -3447,12 +3846,12 @@ export class MainScene extends Phaser.Scene {
             contactMultiplier *
             armorMultiplier;
 
-        if (this.shieldConfig.hp > 0 && now <= this.shieldConfig.activeUntil) {
-            const absorbed = Math.min(this.shieldConfig.hp, remaining);
-            this.shieldConfig.hp -= absorbed;
+        if (pilot.shield.hp > 0 && now <= pilot.shield.activeUntil) {
+            const absorbed = Math.min(pilot.shield.hp, remaining);
+            pilot.shield.hp -= absorbed;
             remaining -= absorbed;
-            if (this.shieldConfig.hp <= 0) {
-                this.shieldConfig.activeUntil = 0;
+            if (pilot.shield.hp <= 0) {
+                pilot.shield.activeUntil = 0;
             }
         }
 
@@ -3465,8 +3864,8 @@ export class MainScene extends Phaser.Scene {
                 this.playerStats.health,
                 this.playerStats.maxHealth
             );
-        this.player?.setTintFill(0xf14e4e);
-        this.time.delayedCall(80, () => this.player?.clearTint());
+        pilot.sprite.setTintFill(0xf14e4e);
+        this.time.delayedCall(80, () => pilot.sprite.clearTint());
         if (this.playerStats.health <= 0) {
             this.endRun(false);
         }

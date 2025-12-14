@@ -43,8 +43,8 @@ export const HowToPlay = () => {
           <div>
             <div className="label">Controller</div>
             <div className="desc">
-              Left Stick to move · Right Stick aims & auto-fires · LB/LT to dash · Start pauses ·
-              Back/View swaps pilots in Twin Mode.
+              Left Stick to move · Right Stick aims & auto-fires · LB/LT to dash · Start pauses. Twin Mode supports two
+              controllers or one keyboard plus a controller.
             </div>
           </div>
         </div>

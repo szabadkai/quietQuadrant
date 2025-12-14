@@ -54,7 +54,7 @@ export const SummaryScreen = () => {
     lastRun.mode === "infinite"
       ? "Infinite run"
       : lastRun.mode === "twin"
-      ? "Twin run (shared upgrades)"
+      ? "Twin run (two ships, shared upgrades)"
       : lastRun.mode === "standard"
       ? "Standard run"
       : null;
