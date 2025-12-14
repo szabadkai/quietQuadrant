@@ -1,7 +1,7 @@
-import { gameManager } from "../../game/GameManager";
-import { useUIStore } from "../../state/useUIStore";
-import { useMenuNavigation } from "../input/useMenuNavigation";
-import { useRef } from "react";
+import { useRef } from 'react';
+import { gameManager } from '../../game/GameManager';
+import { useUIStore } from '../../state/useUIStore';
+import { useMenuNavigation } from '../input/useMenuNavigation';
 
 export const HowToPlay = () => {
   const { setScreen } = useUIStore((s) => s.actions);
@@ -10,12 +10,12 @@ export const HowToPlay = () => {
   const nav = useMenuNavigation(
     [
       { ref: weeklyRef, onActivate: () => gameManager.startRun() },
-      { ref: backRef, onActivate: () => setScreen("title") },
+      { ref: backRef, onActivate: () => setScreen('title') },
     ],
     {
       enabled: true,
       columns: 2,
-      onBack: () => setScreen("title"),
+      onBack: () => setScreen('title'),
     }
   );
 
@@ -43,29 +43,31 @@ export const HowToPlay = () => {
           <div>
             <div className="label">Controller</div>
             <div className="desc">
-              Left Stick to move · Right Stick aims & auto-fires · LB/LT to dash · Start pauses. Twin Mode supports two
-              controllers or one keyboard plus a controller.
+              Left Stick to move · Right Stick aims & auto-fires · LB/LT to dash · Start pauses.
+              Twin Mode supports two controllers or one keyboard plus a controller.
             </div>
           </div>
         </div>
         <p className="note">
-          Runs are 10–15 waves capped by a bullet-hell boss. Upgrades stack; rare picks
-          create spikes in power. Stay light on your feet and watch projectile patterns.
+          Runs are 10–15 waves capped by a bullet-hell boss. Upgrades stack; rare picks create
+          spikes in power. Stay light on your feet and watch projectile patterns.
         </p>
         <div className="actions">
           <button
+            type="button"
             ref={weeklyRef}
             tabIndex={0}
-            className={`primary ${nav.focusedIndex === 0 ? "nav-focused" : ""}`}
+            className={`primary ${nav.focusedIndex === 0 ? 'nav-focused' : ''}`}
             onClick={() => gameManager.startRun()}
           >
             Weekly Run
           </button>
           <button
+            type="button"
             ref={backRef}
             tabIndex={0}
-            className={`ghost ${nav.focusedIndex === 1 ? "nav-focused" : ""}`}
-            onClick={() => setScreen("title")}
+            className={`ghost ${nav.focusedIndex === 1 ? 'nav-focused' : ''}`}
+            onClick={() => setScreen('title')}
           >
             Back
           </button>

@@ -1,8 +1,8 @@
-import { useRunStore } from "../../state/useRunStore";
-import { useEffect, useState } from "react";
-import { gameManager } from "../../game/GameManager";
-import { BOSSES } from "../../config/bosses";
-import { AFFIXES } from "../../config/affixes";
+import { useEffect, useState } from 'react';
+import { AFFIXES } from '../../config/affixes';
+import { BOSSES } from '../../config/bosses';
+import { gameManager } from '../../game/GameManager';
+import { useRunStore } from '../../state/useRunStore';
 
 export const HUD = () => {
   const playerHealth = useRunStore((s) => s.playerHealth);
@@ -13,7 +13,7 @@ export const HUD = () => {
   const currentWave = useRunStore((s) => s.currentWave);
   const waveCap = useRunStore((s) => s.waveCap);
   const elapsedTime = useRunStore((s) => s.elapsedTime);
-  const currentSeed = useRunStore((s) => s.seedId);
+  const _currentSeed = useRunStore((s) => s.seedId);
   const [seasonInfo, setSeasonInfo] = useState(() => gameManager.getSeasonInfo());
 
   const healthPct =
@@ -22,14 +22,14 @@ export const HUD = () => {
   const time = Math.floor(elapsedTime);
   const minutes = Math.floor(time / 60)
     .toString()
-    .padStart(2, "0");
+    .padStart(2, '0');
   const seconds = Math.floor(time % 60)
     .toString()
-    .padStart(2, "0");
+    .padStart(2, '0');
 
   useEffect(() => {
     setSeasonInfo(gameManager.getSeasonInfo());
-  }, [currentSeed]);
+  }, []);
 
   return (
     <div className="hud">
@@ -60,7 +60,7 @@ export const HUD = () => {
           <div className="hud-top-line">
             <span className="label">Wave</span>
             <span className="metric">
-              {currentWave}/{waveCap ?? "∞"}
+              {currentWave}/{waveCap ?? '∞'}
             </span>
           </div>
         </div>
@@ -81,13 +81,14 @@ export const HUD = () => {
             <div className="hud-bottom-line">
               <span className="tiny truncate">
                 {seasonInfo.boss
-                  ? BOSSES.find((b) => b.id === seasonInfo.boss?.id)?.name ?? seasonInfo.boss.id
-                  : "Boss: —"}
+                  ? (BOSSES.find((b) => b.id === seasonInfo.boss?.id)?.name ?? seasonInfo.boss.id)
+                  : 'Boss: —'}
               </span>
-              <span className="tiny truncate" style={{ textAlign: "right" }}>
+              <span className="tiny truncate" style={{ textAlign: 'right' }}>
                 {seasonInfo.affix
-                  ? AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ?? seasonInfo.affix.id
-                  : "Affix: —"}
+                  ? (AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ??
+                    seasonInfo.affix.id)
+                  : 'Affix: —'}
               </span>
             </div>
           </div>

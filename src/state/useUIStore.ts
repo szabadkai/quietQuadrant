@@ -1,6 +1,6 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 
-export type UIScreen = "title" | "inGame" | "summary" | "howToPlay" | "twinSetup";
+export type UIScreen = 'title' | 'inGame' | 'summary' | 'howToPlay' | 'twinSetup';
 
 interface UIState {
   screen: UIScreen;
@@ -19,7 +19,7 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>()((set) => ({
-  screen: "title",
+  screen: 'title',
   upgradeSelectionOpen: false,
   pauseMenuOpen: false,
   leaderboardOpen: false,

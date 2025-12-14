@@ -1,14 +1,12 @@
-import { useMemo } from "react";
-import { getUpgradeDefinition } from "../../config/upgrades";
-import { gameManager } from "../../game/GameManager";
-import { BOSSES } from "../../config/bosses";
-import { AFFIXES } from "../../config/affixes";
-import { useMetaStore } from "../../state/useMetaStore";
-import { useRunStore } from "../../state/useRunStore";
-import { useUIStore } from "../../state/useUIStore";
-import { useEffect, useState } from "react";
-import { useMenuNavigation } from "../input/useMenuNavigation";
-import { createRef } from "react";
+import { createRef, useEffect, useMemo, useState } from 'react';
+import { AFFIXES } from '../../config/affixes';
+import { BOSSES } from '../../config/bosses';
+import { getUpgradeDefinition } from '../../config/upgrades';
+import { gameManager } from '../../game/GameManager';
+import { useMetaStore } from '../../state/useMetaStore';
+import { useRunStore } from '../../state/useRunStore';
+import { useUIStore } from '../../state/useUIStore';
+import { useMenuNavigation } from '../input/useMenuNavigation';
 
 export const PauseMenu = () => {
   const pauseOpen = useUIStore((s) => s.pauseMenuOpen);
@@ -21,13 +19,37 @@ export const PauseMenu = () => {
 
   const loadout = currentUpgrades
     .map((u) => ({ def: getUpgradeDefinition(u.id), stacks: u.stacks }))
-    .filter((u) => u.def !== undefined) as { def: NonNullable<ReturnType<typeof getUpgradeDefinition>>; stacks: number }[];
+    .filter((u) => u.def !== undefined) as {
+    def: NonNullable<ReturnType<typeof getUpgradeDefinition>>;
+    stacks: number;
+  }[];
 
   const sliders = useMemo(
     () => [
-      { key: "masterVolume" as const, label: "Master", min: 0, max: 1, step: 0.05, format: (v: number) => `${Math.round(v * 100)}%` },
-      { key: "musicVolume" as const, label: "Music", min: 0, max: 1, step: 0.05, format: (v: number) => `${Math.round(v * 100)}%` },
-      { key: "sfxVolume" as const, label: "SFX", min: 0, max: 1, step: 0.05, format: (v: number) => `${Math.round(v * 100)}%` },
+      {
+        key: 'masterVolume' as const,
+        label: 'Master',
+        min: 0,
+        max: 1,
+        step: 0.05,
+        format: (v: number) => `${Math.round(v * 100)}%`,
+      },
+      {
+        key: 'musicVolume' as const,
+        label: 'Music',
+        min: 0,
+        max: 1,
+        step: 0.05,
+        format: (v: number) => `${Math.round(v * 100)}%`,
+      },
+      {
+        key: 'sfxVolume' as const,
+        label: 'SFX',
+        min: 0,
+        max: 1,
+        step: 0.05,
+        format: (v: number) => `${Math.round(v * 100)}%`,
+      },
     ],
     []
   );
@@ -40,15 +62,45 @@ export const PauseMenu = () => {
 
   const nav = useMenuNavigation(
     [
-      { ref: resumeRef, onActivate: () => { closePause(); gameManager.resume(); } },
-      { ref: restartRef, onActivate: () => { closePause(); resetRun(); gameManager.startRun(); } },
-      { ref: howToRef, onActivate: () => { closePause(); resetRun(); setScreen("howToPlay"); } },
-      { ref: mainMenuRef, onActivate: () => { closePause(); resetRun(); setScreen("title"); } },
+      {
+        ref: resumeRef,
+        onActivate: () => {
+          closePause();
+          gameManager.resume();
+        },
+      },
+      {
+        ref: restartRef,
+        onActivate: () => {
+          closePause();
+          resetRun();
+          gameManager.startRun();
+        },
+      },
+      {
+        ref: howToRef,
+        onActivate: () => {
+          closePause();
+          resetRun();
+          setScreen('howToPlay');
+        },
+      },
+      {
+        ref: mainMenuRef,
+        onActivate: () => {
+          closePause();
+          resetRun();
+          setScreen('title');
+        },
+      },
       ...sliders.map((slider, idx) => ({
         ref: sliderRefs[idx],
         lockHorizontal: true,
         onAdjust: (dir: -1 | 1) => {
-          const next = Math.min(slider.max, Math.max(slider.min, Number((settings[slider.key] + dir * slider.step).toFixed(2))));
+          const next = Math.min(
+            slider.max,
+            Math.max(slider.min, Number((settings[slider.key] + dir * slider.step).toFixed(2)))
+          );
           updateSettings({ [slider.key]: next });
         },
       })),
@@ -75,9 +127,10 @@ export const PauseMenu = () => {
         <div className="panel-header">Paused</div>
         <div className="actions">
           <button
+            type="button"
             ref={resumeRef}
             tabIndex={0}
-            className={`primary ${nav.focusedIndex === 0 ? "nav-focused" : ""}`}
+            className={`primary ${nav.focusedIndex === 0 ? 'nav-focused' : ''}`}
             onClick={() => {
               closePause();
               gameManager.resume();
@@ -86,9 +139,10 @@ export const PauseMenu = () => {
             Resume
           </button>
           <button
+            type="button"
             ref={restartRef}
             tabIndex={0}
-            className={nav.focusedIndex === 1 ? "nav-focused" : ""}
+            className={nav.focusedIndex === 1 ? 'nav-focused' : ''}
             onClick={() => {
               closePause();
               resetRun();
@@ -98,25 +152,27 @@ export const PauseMenu = () => {
             Restart Run
           </button>
           <button
+            type="button"
             ref={howToRef}
             tabIndex={0}
-            className={nav.focusedIndex === 2 ? "nav-focused" : ""}
+            className={nav.focusedIndex === 2 ? 'nav-focused' : ''}
             onClick={() => {
               closePause();
               resetRun();
-              setScreen("howToPlay");
+              setScreen('howToPlay');
             }}
           >
             How to Play
           </button>
           <button
+            type="button"
             ref={mainMenuRef}
             tabIndex={0}
-            className={`ghost ${nav.focusedIndex === 3 ? "nav-focused" : ""}`}
+            className={`ghost ${nav.focusedIndex === 3 ? 'nav-focused' : ''}`}
             onClick={() => {
               closePause();
               resetRun();
-              setScreen("title");
+              setScreen('title');
             }}
           >
             Main Menu
@@ -130,16 +186,20 @@ export const PauseMenu = () => {
               <span className="pill">Seed {seasonInfo.seedId}</span>
               {seasonInfo.boss && (
                 <span className="pill">
-                  Boss: {BOSSES.find((b) => b.id === seasonInfo.boss?.id)?.name ?? seasonInfo.boss?.id}
+                  Boss:{' '}
+                  {BOSSES.find((b) => b.id === seasonInfo.boss?.id)?.name ?? seasonInfo.boss?.id}
                 </span>
               )}
               {seasonInfo.affix && (
                 <span className="pill">
-                  Affix: {AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ?? seasonInfo.affix?.id}
+                  Affix:{' '}
+                  {AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ?? seasonInfo.affix?.id}
                 </span>
               )}
             </div>
-            {seasonInfo.affix?.description && <div className="note">{seasonInfo.affix.description}</div>}
+            {seasonInfo.affix?.description && (
+              <div className="note">{seasonInfo.affix.description}</div>
+            )}
           </div>
         )}
 
@@ -176,10 +236,8 @@ export const PauseMenu = () => {
                   max={slider.max}
                   step={slider.step}
                   value={settings[slider.key]}
-                  onChange={(e) =>
-                    updateSettings({ [slider.key]: Number(e.target.value) })
-                  }
-                  className={nav.focusedIndex === 4 + idx ? "nav-focused" : ""}
+                  onChange={(e) => updateSettings({ [slider.key]: Number(e.target.value) })}
+                  className={nav.focusedIndex === 4 + idx ? 'nav-focused' : ''}
                 />
                 <div className="tiny">
                   {slider.format?.(settings[slider.key]) ?? settings[slider.key]}
@@ -189,8 +247,8 @@ export const PauseMenu = () => {
           </div>
         </div>
         <div className="note">
-          Controller quick map: Left Stick move · Right Stick aims & auto-fires · LB/LT dash · Start pauses. In Twin Mode,
-          each pilot uses their selected device.
+          Controller quick map: Left Stick move · Right Stick aims & auto-fires · LB/LT dash · Start
+          pauses. In Twin Mode, each pilot uses their selected device.
         </div>
       </div>
     </div>

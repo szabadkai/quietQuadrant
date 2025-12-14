@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import { gameManager } from "../../game/GameManager";
-import { UPGRADE_CATALOG } from "../../config/upgrades";
-import { SYNERGY_DEFINITIONS } from "../../config/synergies";
-import { useRunStore } from "../../state/useRunStore";
-import { useUIStore } from "../../state/useUIStore";
+import { useEffect, useMemo, useState } from 'react';
+import { SYNERGY_DEFINITIONS } from '../../config/synergies';
+import { UPGRADE_CATALOG } from '../../config/upgrades';
+import { gameManager } from '../../game/GameManager';
+import { useRunStore } from '../../state/useRunStore';
+import { useUIStore } from '../../state/useUIStore';
 
 const rarityOrder: Record<string, number> = { legendary: 0, rare: 1, common: 2 };
 
@@ -12,19 +12,17 @@ export const DevPanel = () => {
   const runStatus = useRunStore((s) => s.status);
   const [waveInput, setWaveInput] = useState(1);
   const [count, setCount] = useState(1);
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState('');
   const [open, setOpen] = useState(false);
-
-  if (!import.meta.env.DEV) return null;
 
   useEffect(() => {
     const onKeyDown = (ev: KeyboardEvent) => {
       if (!ev.shiftKey) return;
-      if (ev.key.toLowerCase() !== "d") return;
+      if (ev.key.toLowerCase() !== 'd') return;
       setOpen((prev) => !prev);
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
   const waveCap = useRunStore((s) => s.waveCap);
@@ -45,7 +43,9 @@ export const DevPanel = () => {
     );
   }, [filter]);
 
-  const disabled = runStatus !== "running";
+  if (!import.meta.env.DEV) return null;
+
+  const disabled = runStatus !== 'running';
 
   const applyUpgrade = (id: string) => {
     if (disabled) return;
@@ -59,7 +59,9 @@ export const DevPanel = () => {
     if (disabled) return;
     const syn = SYNERGY_DEFINITIONS.find((s) => s.id === synId);
     if (!syn) return;
-    syn.requires.forEach((id) => gameManager.applyUpgrade(id));
+    for (const id of syn.requires) {
+      gameManager.applyUpgrade(id);
+    }
   };
 
   const jumpWave = () => {
@@ -69,40 +71,43 @@ export const DevPanel = () => {
     gameManager.debugSetWave(wave);
   };
 
-  if (screen !== "inGame" || !open) return null;
+  if (screen !== 'inGame' || !open) return null;
 
   return (
     <div className="dev-panel">
       <div className="dev-header">
         <span>Dev Controls</span>
-        <button className="dev-close" onClick={() => setOpen(false)}>
+        <button type="button" className="dev-close" onClick={() => setOpen(false)}>
           ✕
         </button>
       </div>
       <div className="dev-row">
-        <label>Wave</label>
+        <label htmlFor="wave-input">Wave</label>
         <input
+          id="wave-input"
           type="number"
           min={1}
           max={maxWave}
           value={waveInput}
           onChange={(e) => setWaveInput(Number(e.target.value))}
         />
-        <button onClick={jumpWave} disabled={disabled}>
+        <button type="button" onClick={jumpWave} disabled={disabled}>
           Jump
         </button>
       </div>
       <div className="dev-row">
-        <label>Stacks</label>
+        <label htmlFor="stacks-input">Stacks</label>
         <input
+          id="stacks-input"
           type="number"
           min={1}
           max={10}
           value={count}
           onChange={(e) => setCount(Number(e.target.value))}
         />
-        <label>Filter</label>
+        <label htmlFor="filter-input">Filter</label>
         <input
+          id="filter-input"
           type="text"
           placeholder="id/name/category"
           value={filter}
@@ -111,7 +116,13 @@ export const DevPanel = () => {
       </div>
       <div className="dev-synergies">
         {SYNERGY_DEFINITIONS.map((syn) => (
-          <button key={syn.id} onClick={() => applySynergy(syn.id)} disabled={disabled} title={syn.description}>
+          <button
+            type="button"
+            key={syn.id}
+            onClick={() => applySynergy(syn.id)}
+            disabled={disabled}
+            title={syn.description}
+          >
             {syn.name}
           </button>
         ))}
@@ -119,6 +130,7 @@ export const DevPanel = () => {
       <div className="dev-upgrade-grid">
         {filteredUpgrades.map((u) => (
           <button
+            type="button"
             key={u.id}
             className={`dev-upgrade ${u.rarity}`}
             onClick={() => applyUpgrade(u.id)}

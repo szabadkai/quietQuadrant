@@ -1,14 +1,14 @@
-import type { EnemyDefinition, EnemyKind } from "../models/types";
+import type { EnemyDefinition, EnemyKind } from '../models/types';
 
 const base: Record<EnemyKind, EnemyDefinition> = {
   drifter: {
-    kind: "drifter",
+    kind: 'drifter',
     speed: 110,
     health: 18,
     damage: 10,
   },
   watcher: {
-    kind: "watcher",
+    kind: 'watcher',
     speed: 70,
     health: 28,
     damage: 12,
@@ -16,7 +16,7 @@ const base: Record<EnemyKind, EnemyDefinition> = {
     projectileSpeed: 160,
   },
   mass: {
-    kind: "mass",
+    kind: 'mass',
     speed: 45,
     health: 70,
     damage: 25,
@@ -24,7 +24,7 @@ const base: Record<EnemyKind, EnemyDefinition> = {
     projectileSpeed: 120,
   },
   boss: {
-    kind: "boss",
+    kind: 'boss',
     speed: 60,
     health: 1500,
     damage: 25,
@@ -38,10 +38,7 @@ export const eliteMultipliers = {
   speed: 1.2,
 };
 
-export const getEnemyDefinition = (
-  kind: EnemyKind,
-  elite?: boolean
-): EnemyDefinition => {
+export const getEnemyDefinition = (kind: EnemyKind, elite?: boolean): EnemyDefinition => {
   const data = { ...base[kind] };
   if (elite) {
     data.health *= eliteMultipliers.health;

@@ -1,14 +1,14 @@
-export type Rarity = "common" | "rare" | "legendary";
+export type Rarity = 'common' | 'rare' | 'legendary';
 
 export type UpgradeTuning = Record<string, number>;
 
-export type RunMode = "standard" | "infinite" | "twin";
+export type RunMode = 'standard' | 'infinite' | 'twin';
 
-export type InputMode = "keyboardMouse" | "controller";
+export type InputMode = 'keyboardMouse' | 'controller';
 
 export type ControlBinding =
-  | { type: "keyboardMouse"; label?: string }
-  | { type: "gamepad"; id?: string; index?: number; label?: string };
+  | { type: 'keyboardMouse'; label?: string }
+  | { type: 'gamepad'; id?: string; index?: number; label?: string };
 
 export type TwinControlConfig = {
   p1: ControlBinding;
@@ -21,7 +21,7 @@ export interface UpgradeDefinition {
   description: string;
   rarity: Rarity;
   maxStacks?: number;
-  category: "offense" | "defense" | "utility";
+  category: 'offense' | 'defense' | 'utility';
   tags?: string[];
   synergy?: string;
   tuning?: UpgradeTuning;
@@ -67,7 +67,7 @@ export interface Settings {
   inputMode: InputMode;
 }
 
-export type EnemyKind = "drifter" | "watcher" | "mass" | "boss";
+export type EnemyKind = 'drifter' | 'watcher' | 'mass' | 'boss';
 
 export interface EnemyDefinition {
   kind: EnemyKind;

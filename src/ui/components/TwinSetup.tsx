@@ -1,20 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { gameManager } from "../../game/GameManager";
-import { useUIStore } from "../../state/useUIStore";
-import { useMenuNavigation } from "../input/useMenuNavigation";
-import type { ControlBinding } from "../../models/types";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { gameManager } from '../../game/GameManager';
+import type { ControlBinding } from '../../models/types';
+import { useUIStore } from '../../state/useUIStore';
+import { useMenuNavigation } from '../input/useMenuNavigation';
 
 type ControlOption = {
   id: string;
   label: string;
-  type: "keyboardMouse" | "gamepad";
+  type: 'keyboardMouse' | 'gamepad';
   index?: number;
 };
 
 const keyboardOption: ControlOption = {
-  id: "keyboardMouse",
-  label: "Keyboard + Mouse",
-  type: "keyboardMouse",
+  id: 'keyboardMouse',
+  label: 'Keyboard + Mouse',
+  type: 'keyboardMouse',
 };
 
 export const TwinSetup = () => {
@@ -26,16 +26,16 @@ export const TwinSetup = () => {
   useEffect(() => {
     const poll = () => {
       const pads = Array.from(navigator.getGamepads?.() ?? [])
-        .filter((pad): pad is Gamepad => Boolean(pad && pad.connected))
+        .filter((pad): pad is Gamepad => Boolean(pad?.connected))
         .map<ControlOption>((pad) => ({
           id: `gamepad-${pad.index}`,
-          label: pad.id?.split("(")[0]?.trim() || `Gamepad ${pad.index + 1}`,
-          type: "gamepad",
+          label: pad.id?.split('(')[0]?.trim() || `Gamepad ${pad.index + 1}`,
+          type: 'gamepad',
           index: pad.index,
         }));
       setGamepads(pads);
       setP2Choice((current) => {
-        if (current && current.type === "gamepad") {
+        if (current && current.type === 'gamepad') {
           const stillExists = pads.some((p) => p.id === current.id);
           if (!stillExists) {
             return pads.find((p) => p.id !== p1Choice.id) ?? null;
@@ -50,12 +50,12 @@ export const TwinSetup = () => {
     };
     poll();
     const interval = window.setInterval(poll, 600);
-    window.addEventListener("gamepadconnected", poll);
-    window.addEventListener("gamepaddisconnected", poll);
+    window.addEventListener('gamepadconnected', poll);
+    window.addEventListener('gamepaddisconnected', poll);
     return () => {
       clearInterval(interval);
-      window.removeEventListener("gamepadconnected", poll);
-      window.removeEventListener("gamepaddisconnected", poll);
+      window.removeEventListener('gamepadconnected', poll);
+      window.removeEventListener('gamepaddisconnected', poll);
     };
   }, [p1Choice.id]);
 
@@ -64,14 +64,14 @@ export const TwinSetup = () => {
   }, [gamepads]);
 
   const convert = (opt: ControlOption): ControlBinding => {
-    if (opt.type === "keyboardMouse") {
-      return { type: "keyboardMouse", label: opt.label };
+    if (opt.type === 'keyboardMouse') {
+      return { type: 'keyboardMouse', label: opt.label };
     }
-    return { type: "gamepad", id: opt.id, index: opt.index, label: opt.label };
+    return { type: 'gamepad', id: opt.id, index: opt.index, label: opt.label };
   };
 
-  const isTakenByOther = (candidate: ControlOption, target: "p1" | "p2") => {
-    const other = target === "p1" ? p2Choice : p1Choice;
+  const isTakenByOther = (candidate: ControlOption, target: 'p1' | 'p2') => {
+    const other = target === 'p1' ? p2Choice : p1Choice;
     if (!other) return false;
     return other.id === candidate.id;
   };
@@ -87,7 +87,7 @@ export const TwinSetup = () => {
         onActivate: () => {
           if (!canLaunch || !p2Choice) return;
           gameManager.startRun(undefined, {
-            mode: "twin",
+            mode: 'twin',
             twinControls: {
               p1: convert(p1Choice),
               p2: convert(p2Choice),
@@ -96,9 +96,9 @@ export const TwinSetup = () => {
         },
         disabled: !canLaunch,
       },
-      { ref: backRef, onActivate: () => setScreen("title") },
+      { ref: backRef, onActivate: () => setScreen('title') },
     ],
-    { enabled: true, columns: 2, onBack: () => setScreen("title") }
+    { enabled: true, columns: 2, onBack: () => setScreen('title') }
   );
 
   return (
@@ -106,8 +106,8 @@ export const TwinSetup = () => {
       <div className="panel">
         <div className="panel-header">Twin Mode Setup</div>
         <p className="note">
-          Pick who flies on keyboard/mouse versus which controller. Each pilot gets their own ship, but upgrades are
-          shared. Devices can&apos;t be used by both players at once.
+          Pick who flies on keyboard/mouse versus which controller. Each pilot gets their own ship,
+          but upgrades are shared. Devices can&apos;t be used by both players at once.
         </p>
         <div className="setup-grid">
           <div className="setup-column">
@@ -115,14 +115,15 @@ export const TwinSetup = () => {
             <div className="option-list">
               {options.map((opt) => (
                 <button
+                  type="button"
                   key={`p1-${opt.id}`}
-                  className={`option-chip ${p1Choice.id === opt.id ? "selected" : ""}`}
-                  disabled={isTakenByOther(opt, "p1")}
+                  className={`option-chip ${p1Choice.id === opt.id ? 'selected' : ''}`}
+                  disabled={isTakenByOther(opt, 'p1')}
                   onClick={() => setP1Choice(opt)}
                 >
                   {opt.label}
-                  {opt.type === "keyboardMouse" ? " (Keyboard)" : ""}
-                  {isTakenByOther(opt, "p1") && <span className="tiny">Taken</span>}
+                  {opt.type === 'keyboardMouse' ? ' (Keyboard)' : ''}
+                  {isTakenByOther(opt, 'p1') && <span className="tiny">Taken</span>}
                 </button>
               ))}
             </div>
@@ -132,14 +133,15 @@ export const TwinSetup = () => {
             <div className="option-list">
               {options.map((opt) => (
                 <button
+                  type="button"
                   key={`p2-${opt.id}`}
-                  className={`option-chip ${p2Choice?.id === opt.id ? "selected" : ""}`}
-                  disabled={isTakenByOther(opt, "p2")}
+                  className={`option-chip ${p2Choice?.id === opt.id ? 'selected' : ''}`}
+                  disabled={isTakenByOther(opt, 'p2')}
                   onClick={() => setP2Choice(opt)}
                 >
                   {opt.label}
-                  {opt.type === "keyboardMouse" ? " (Keyboard)" : ""}
-                  {isTakenByOther(opt, "p2") && <span className="tiny">Taken</span>}
+                  {opt.type === 'keyboardMouse' ? ' (Keyboard)' : ''}
+                  {isTakenByOther(opt, 'p2') && <span className="tiny">Taken</span>}
                 </button>
               ))}
               {options.length === 1 && (
@@ -150,13 +152,14 @@ export const TwinSetup = () => {
         </div>
         <div className="actions">
           <button
+            type="button"
             ref={launchRef}
             tabIndex={0}
-            className={`primary ${nav.focusedIndex === 0 ? "nav-focused" : ""}`}
+            className={`primary ${nav.focusedIndex === 0 ? 'nav-focused' : ''}`}
             onClick={() => {
               if (!canLaunch || !p2Choice) return;
               gameManager.startRun(undefined, {
-                mode: "twin",
+                mode: 'twin',
                 twinControls: { p1: convert(p1Choice), p2: convert(p2Choice) },
               });
             }}
@@ -165,10 +168,11 @@ export const TwinSetup = () => {
             Launch Twin Run
           </button>
           <button
+            type="button"
             ref={backRef}
             tabIndex={0}
-            className={`ghost ${nav.focusedIndex === 1 ? "nav-focused" : ""}`}
-            onClick={() => setScreen("title")}
+            className={`ghost ${nav.focusedIndex === 1 ? 'nav-focused' : ''}`}
+            onClick={() => setScreen('title')}
           >
             Back
           </button>

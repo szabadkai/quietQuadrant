@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useMenuControls } from "./useMenuControls";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMenuControls } from './useMenuControls';
 
 export type MenuNavItem = {
   ref: React.RefObject<HTMLElement | null>;
@@ -29,61 +29,70 @@ export function useMenuNavigation(items: MenuNavItem[], options: NavOptions) {
     if (!enabled) return;
     const firstActive = items.findIndex((i) => !i.disabled);
     if (firstActive >= 0) {
-      setIndex((prev) =>
-        prev >= count || items[prev]?.disabled ? firstActive : prev
-      );
+      setIndex((prev) => (prev >= count || items[prev]?.disabled ? firstActive : prev));
     } else {
       setIndex(0);
     }
-  }, [enabled, count]);
+  }, [enabled, count, items]);
 
-  const focusItem = (idx: number) => {
-    const item = items[idx];
-    if (!item) return;
-    item.onFocus?.();
-    const el = item.ref.current;
-    if (!el) return;
-    el.focus({ preventScroll: true });
-  };
+  const focusItem = useCallback(
+    (idx: number) => {
+      const item = items[idx];
+      if (!item) return;
+      item.onFocus?.();
+      const el = item.ref.current;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+    },
+    [items]
+  );
 
-  const isDisabled = (idx: number) =>
-    idx < 0 || idx >= count ? true : items[idx]?.disabled === true;
+  const isDisabled = useCallback(
+    (idx: number) => (idx < 0 || idx >= count ? true : items[idx]?.disabled === true),
+    [count, items]
+  );
 
-  const moveIndex = (delta: number) => {
-    if (count === 0) return;
-    let next = index + delta;
-    let guard = 0;
-    while (isDisabled(next) && guard < count) {
-      next += delta;
+  const moveIndex = useCallback(
+    (delta: number) => {
+      if (count === 0) return;
+      let next = index + delta;
+      let guard = 0;
+      while (isDisabled(next) && guard < count) {
+        next += delta;
+        if (loop) {
+          next = (next + count) % count;
+        } else {
+          if (next < 0 || next >= count) return;
+        }
+        guard += 1;
+      }
       if (loop) {
         next = (next + count) % count;
       } else {
-        if (next < 0 || next >= count) return;
+        next = Math.max(0, Math.min(count - 1, next));
       }
-      guard += 1;
-    }
-    if (loop) {
-      next = (next + count) % count;
-    } else {
-      next = Math.max(0, Math.min(count - 1, next));
-    }
-    setIndex(next);
-    focusItem(next);
-  };
+      setIndex(next);
+      focusItem(next);
+    },
+    [count, index, isDisabled, loop, focusItem]
+  );
 
-  const moveGrid = (dx: number, dy: number) => {
-    if (columns <= 1) {
-      moveIndex(dx !== 0 ? dx : dy * columns);
-      return;
-    }
-    if (dy !== 0) {
-      moveIndex(dy * columns);
-      return;
-    }
-    if (dx !== 0) {
-      moveIndex(dx);
-    }
-  };
+  const moveGrid = useCallback(
+    (dx: number, dy: number) => {
+      if (columns <= 1) {
+        moveIndex(dx !== 0 ? dx : dy * columns);
+        return;
+      }
+      if (dy !== 0) {
+        moveIndex(dy * columns);
+        return;
+      }
+      if (dx !== 0) {
+        moveIndex(dx);
+      }
+    },
+    [columns, moveIndex]
+  );
 
   useEffect(() => {
     if (!enabled) return;
@@ -109,7 +118,7 @@ export function useMenuNavigation(items: MenuNavItem[], options: NavOptions) {
       current?.onActivate?.();
       return;
     }
-  }, [controls, enabled, index, items, onBack, columns]);
+  }, [controls, enabled, index, items, onBack, moveGrid]);
 
   useEffect(() => {
     if (!enabled || count === 0) return;
@@ -125,7 +134,7 @@ export function useMenuNavigation(items: MenuNavItem[], options: NavOptions) {
         clearTimeout(focusTimer.current);
       }
     };
-  }, [enabled, index, count]);
+  }, [enabled, index, count, focusItem]);
 
   return useMemo(
     () => ({

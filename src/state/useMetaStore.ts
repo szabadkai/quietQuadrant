@@ -1,7 +1,7 @@
-import { create } from "zustand";
-import type { PerSeedBest, RunSummary, Settings } from "../models/types";
-import { LocalStorageAdapter } from "../persistence/LocalStorageAdapter";
-import type { MetaStatePayload } from "../persistence/PersistenceAdapter";
+import { create } from 'zustand';
+import type { PerSeedBest, RunSummary, Settings } from '../models/types';
+import { LocalStorageAdapter } from '../persistence/LocalStorageAdapter';
+import type { MetaStatePayload } from '../persistence/PersistenceAdapter';
 
 const adapter = new LocalStorageAdapter();
 
@@ -13,7 +13,7 @@ const defaultSettings: Settings = {
   muteMusic: false,
   lowGraphicsMode: false,
   difficultyMultiplier: 1,
-  inputMode: "keyboardMouse",
+  inputMode: 'keyboardMouse',
 };
 
 interface MetaState {
@@ -22,7 +22,7 @@ interface MetaState {
   settings: Settings;
   isHydrated: boolean;
   bestRunsBySeed: PerSeedBest;
-   topRuns: RunSummary[];
+  topRuns: RunSummary[];
   actions: {
     hydrateFromPersistence: () => Promise<void>;
     recordRun: (summary: RunSummary) => Promise<void>;
@@ -44,7 +44,7 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
         ...(payload?.settings ?? {}),
       };
       const bestRun = payload?.bestRun
-        ? { ...payload.bestRun, seedId: payload.bestRun.seedId ?? "legacy" }
+        ? { ...payload.bestRun, seedId: payload.bestRun.seedId ?? 'legacy' }
         : undefined;
       const bestRunsBySeed = payload?.bestRunsBySeed ?? {};
       const topRuns = payload?.topRuns ?? [];

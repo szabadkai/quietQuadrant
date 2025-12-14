@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { useInputStore } from "../../state/useInputStore";
-import { useUIStore } from "../../state/useUIStore";
+import { useEffect, useState } from 'react';
+import { useInputStore } from '../../state/useInputStore';
+import { useUIStore } from '../../state/useUIStore';
 
 export const MobileMenuButton = () => {
   const isMobile = useInputStore((s) => s.isMobile);
@@ -16,11 +16,11 @@ export const MobileMenuButton = () => {
     }
   }, [pauseOpen]);
 
-  if (!isMobile || screen !== "inGame" || pauseOpen || upgradeOpen) return null;
+  if (!isMobile || screen !== 'inGame' || pauseOpen || upgradeOpen) return null;
 
   return (
     <button
-      className={`mobile-menu-button ${pressed ? "is-pressed" : ""}`}
+      className={`mobile-menu-button ${pressed ? 'is-pressed' : ''}`}
       onPointerDown={() => setPressed(true)}
       onPointerUp={() => setPressed(false)}
       onPointerCancel={() => setPressed(false)}

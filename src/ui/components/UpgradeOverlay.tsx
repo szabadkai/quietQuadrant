@@ -1,9 +1,9 @@
-import { createRef, useEffect, useMemo, useState } from "react";
-import type { UpgradeDefinition } from "../../models/types";
-import { gameManager } from "../../game/GameManager";
-import { GAME_EVENT_KEYS, gameEvents } from "../../game/events";
-import { useUIStore } from "../../state/useUIStore";
-import { useMenuNavigation } from "../input/useMenuNavigation";
+import { createRef, useEffect, useMemo, useState } from 'react';
+import { GAME_EVENT_KEYS, gameEvents } from '../../game/events';
+import { gameManager } from '../../game/GameManager';
+import type { UpgradeDefinition } from '../../models/types';
+import { useUIStore } from '../../state/useUIStore';
+import { useMenuNavigation } from '../input/useMenuNavigation';
 
 export const UpgradeOverlay = () => {
   const upgradeOpen = useUIStore((s) => s.upgradeSelectionOpen);
@@ -43,10 +43,11 @@ export const UpgradeOverlay = () => {
         <div className="upgrade-grid">
           {options.map((opt, idx) => (
             <button
+              type="button"
               ref={optionRefs[idx]}
               tabIndex={0}
               key={opt.id}
-              className={`upgrade-card ${opt.rarity} ${nav.focusedIndex === idx ? "nav-focused" : ""}`}
+              className={`upgrade-card ${opt.rarity} ${nav.focusedIndex === idx ? 'nav-focused' : ''}`}
               onClick={() => gameManager.applyUpgrade(opt.id)}
             >
               <div className="rarity">{opt.rarity.toUpperCase()}</div>

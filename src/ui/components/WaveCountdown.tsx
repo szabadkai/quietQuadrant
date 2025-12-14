@@ -1,4 +1,4 @@
-import { useRunStore } from "../../state/useRunStore";
+import { useRunStore } from '../../state/useRunStore';
 
 export const WaveCountdown = () => {
   const countdown = useRunStore((s) => s.intermissionCountdown);
@@ -11,7 +11,7 @@ export const WaveCountdown = () => {
     <div className="wave-countdown">
       <div className="wave-countdown__card">
         <div className="wave-countdown__badge">
-          Round {upcomingWave} / {waveCap ?? "∞"}
+          Round {upcomingWave} / {waveCap ?? '∞'}
         </div>
         <div className="wave-countdown__timer">
           <span className="wave-countdown__digit">{countdown}</span>

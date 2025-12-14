@@ -10,7 +10,8 @@ export class Prng {
 
   next() {
     // Mulberry32
-    let t = (this.state += 0x6d2b79f5);
+    this.state += 0x6d2b79f5;
+    let t = this.state;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -41,7 +42,7 @@ export const getWeeklySeed = (now = Date.now()) => {
 
 export const pickFromList = <T>(items: T[], rng: Prng): T => {
   if (items.length === 0) {
-    throw new Error("pickFromList called with empty list");
+    throw new Error('pickFromList called with empty list');
   }
   return items[rng.nextInt(items.length)];
 };

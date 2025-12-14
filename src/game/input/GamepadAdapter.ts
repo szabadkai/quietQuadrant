@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import Phaser from 'phaser';
 
 export type GamepadControlState = {
   hasGamepad: boolean;
@@ -54,7 +54,9 @@ export class GamepadAdapter {
     const plugin = this.scene.input.gamepad;
     if (!plugin) return base;
 
-    const connectedPads = plugin.gamepads.filter((p) => p && p.connected) as Phaser.Input.Gamepad.Gamepad[];
+    const connectedPads = plugin.gamepads.filter(
+      (p) => p?.connected
+    ) as Phaser.Input.Gamepad.Gamepad[];
     const lockedId = preferredPadId ?? this.lockedPadId;
     const lockedIndex = preferredPadIndex ?? this.lockedPadIndex;
     const locked = lockedId !== undefined || lockedIndex !== undefined;
@@ -76,7 +78,8 @@ export class GamepadAdapter {
       }
     } else {
       if (!this.activePad || !this.activePad.connected) {
-        this.activePad = connectedPads.find((p) => p && p.id === this.activePad?.id) ?? connectedPads[0];
+        this.activePad =
+          connectedPads.find((p) => p && p.id === this.activePad?.id) ?? connectedPads[0];
       }
 
       for (const pad of connectedPads) {
@@ -121,7 +124,7 @@ export class GamepadAdapter {
     this.lastSwapHeld = swapHeld;
 
     if (!locked && swapRequested && connectedPads.length > 1) {
-      const currentIndex = connectedPads.findIndex((p) => p === pad);
+      const currentIndex = connectedPads.indexOf(pad);
       const nextPad = connectedPads[(currentIndex + 1) % connectedPads.length] ?? connectedPads[0];
       if (nextPad) {
         this.activePad = nextPad;
@@ -133,12 +136,7 @@ export class GamepadAdapter {
     return {
       hasGamepad: true,
       usingGamepad:
-        move.lengthSq() > 0 ||
-        aimActive ||
-        fireButton ||
-        dashHeld ||
-        pauseHeld ||
-        swapHeld,
+        move.lengthSq() > 0 || aimActive || fireButton || dashHeld || pauseHeld || swapHeld,
       move,
       aim,
       fireActive,
@@ -150,7 +148,7 @@ export class GamepadAdapter {
   }
 
   private axis(pad: Phaser.Input.Gamepad.Gamepad, index: number, deadzone: number) {
-    const val = pad.axes.length > index ? pad.axes[index]!.getValue() : 0;
+    const val = pad.axes.length > index ? pad.axes[index]?.getValue() : 0;
     return Math.abs(val) < deadzone ? 0 : val;
   }
 
@@ -172,11 +170,14 @@ export class GamepadAdapter {
   }
 
   private buttonValue(pad: Phaser.Input.Gamepad.Gamepad, index: number) {
-    return pad.buttons.length > index ? pad.buttons[index]!.value : 0;
+    return pad.buttons.length > index ? pad.buttons[index]?.value : 0;
   }
 
   private getPadActivity(pad: Phaser.Input.Gamepad.Gamepad) {
-    const axesActivity = pad.axes.reduce((max, axis) => Math.max(max, Math.abs(axis.getValue())), 0);
+    const axesActivity = pad.axes.reduce(
+      (max, axis) => Math.max(max, Math.abs(axis.getValue())),
+      0
+    );
     const buttonActivity = pad.buttons.reduce((max, btn) => Math.max(max, btn.value), 0);
     return Math.max(axesActivity, buttonActivity);
   }

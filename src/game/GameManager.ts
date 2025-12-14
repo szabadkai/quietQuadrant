@@ -1,10 +1,10 @@
-import Phaser from "phaser";
-import { createGameConfig } from "./GameConfig";
-import { MainScene } from "./scenes/MainScene";
-import { getWeeklySeed, hashSeed, Prng, pickFromList } from "../utils/seed";
-import { AFFIXES } from "../config/affixes";
-import { BOSSES } from "../config/bosses";
-import type { BossDefinition, RunMode, TwinControlConfig, WeeklyAffix } from "../models/types";
+import Phaser from 'phaser';
+import { AFFIXES } from '../config/affixes';
+import { BOSSES } from '../config/bosses';
+import type { BossDefinition, RunMode, TwinControlConfig, WeeklyAffix } from '../models/types';
+import { getWeeklySeed, hashSeed, Prng, pickFromList } from '../utils/seed';
+import { createGameConfig } from './GameConfig';
+import { MainScene } from './scenes/MainScene';
 
 class GameManager {
   private game?: Phaser.Game;
@@ -26,11 +26,18 @@ class GameManager {
     const weekly = getWeeklySeed();
     const finalSeedId = forceRandom
       ? `random-${crypto.randomUUID()}`
-      : seedId ?? this.seasonSeedId ?? weekly.seedId;
+      : (seedId ?? this.seasonSeedId ?? weekly.seedId);
     const seedValue = forceRandom
-      ? (crypto.randomUUID().split("-")[0] ?? "1").split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-      : (seedId ? hashSeed(seedId) : this.seasonSeedValue ?? weekly.seedValue) || 1;
-    if (this.seasonSeedId === finalSeedId && this.seasonSeedValue === seedValue && this.currentAffix && this.seasonBoss) {
+      ? (crypto.randomUUID().split('-')[0] ?? '1')
+          .split('')
+          .reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+      : (seedId ? hashSeed(seedId) : (this.seasonSeedValue ?? weekly.seedValue)) || 1;
+    if (
+      this.seasonSeedId === finalSeedId &&
+      this.seasonSeedValue === seedValue &&
+      this.currentAffix &&
+      this.seasonBoss
+    ) {
       return;
     }
     const affixRng = new Prng(seedValue ^ 0x9e3779b9);
@@ -41,9 +48,12 @@ class GameManager {
     this.seasonSeedValue = seedValue;
   }
 
-  startRun(seedId?: string, options?: { randomSeed?: boolean; mode?: RunMode; twinControls?: TwinControlConfig }) {
+  startRun(
+    seedId?: string,
+    options?: { randomSeed?: boolean; mode?: RunMode; twinControls?: TwinControlConfig }
+  ) {
     if (!this.game) {
-      this.init("game-root");
+      this.init('game-root');
     }
     if (options?.twinControls) {
       this.lastTwinControls = options.twinControls;

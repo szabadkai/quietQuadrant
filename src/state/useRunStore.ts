@@ -1,8 +1,8 @@
-import { create } from "zustand";
-import { WAVES } from "../config/waves";
-import type { RunMode, RunSummary, UpgradeInstance } from "../models/types";
+import { create } from 'zustand';
+import { WAVES } from '../config/waves';
+import type { RunMode, RunSummary, UpgradeInstance } from '../models/types';
 
-export type RunStatus = "idle" | "running" | "paused" | "ended";
+export type RunStatus = 'idle' | 'running' | 'paused' | 'ended';
 
 interface RunState {
   runId: string | null;
@@ -39,10 +39,10 @@ interface RunState {
   };
 }
 
-const defaultState = (): Omit<RunState, "actions"> => ({
+const defaultState = (): Omit<RunState, 'actions'> => ({
   runId: null,
-  status: "idle",
-  mode: "standard",
+  status: 'idle',
+  mode: 'standard',
   waveCap: WAVES.length,
   currentWave: 1,
   elapsedTime: 0,
@@ -67,16 +67,16 @@ export const useRunStore = create<RunState>()((set, _get) => ({
         ...state,
         ...defaultState(),
         runId: crypto.randomUUID(),
-        status: "running",
+        status: 'running',
         seedId,
         achievedSynergies: [],
-        mode: opts?.mode ?? "standard",
+        mode: opts?.mode ?? 'standard',
         waveCap: opts?.waveCap ?? null,
       })),
     endRun: (summary) =>
       set((state) => ({
         ...state,
-        status: "ended",
+        status: 'ended',
         runId: null,
         lastRunSummary: summary,
       })),
@@ -100,19 +100,15 @@ export const useRunStore = create<RunState>()((set, _get) => ({
           : { achievedSynergies: [...state.achievedSynergies, synergyId] }
       ),
     setStatus: (status) => set(() => ({ status })),
-    tick: (deltaSeconds) =>
-      set((state) => ({ elapsedTime: state.elapsedTime + deltaSeconds })),
-    recordKill: () =>
-      set((state) => ({ enemiesDestroyed: state.enemiesDestroyed + 1 })),
+    tick: (deltaSeconds) => set((state) => ({ elapsedTime: state.elapsedTime + deltaSeconds })),
+    recordKill: () => set((state) => ({ enemiesDestroyed: state.enemiesDestroyed + 1 })),
     setVitals: (health, maxHealth) =>
       set(() => ({ playerHealth: health, playerMaxHealth: maxHealth })),
-    setXp: (level, xp, xpThreshold) =>
-      set(() => ({ playerLevel: level, xp, xpThreshold })),
+    setXp: (level, xp, xpThreshold) => set(() => ({ playerLevel: level, xp, xpThreshold })),
     setWaveCountdown: (countdown, upcomingWave) =>
       set((state) => ({
         intermissionCountdown: countdown,
-        upcomingWave:
-          upcomingWave === undefined ? state.upcomingWave : upcomingWave,
+        upcomingWave: upcomingWave === undefined ? state.upcomingWave : upcomingWave,
       })),
     reset: () =>
       set((state) => ({

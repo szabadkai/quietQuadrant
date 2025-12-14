@@ -1,33 +1,32 @@
-import { useMemo } from "react";
-import { gameManager } from "../../game/GameManager";
-import { BOSSES } from "../../config/bosses";
-import { AFFIXES } from "../../config/affixes";
-import { useMetaStore } from "../../state/useMetaStore";
-import { useRunStore } from "../../state/useRunStore";
-import { useUIStore } from "../../state/useUIStore";
-import { SYNERGY_DEFINITIONS } from "../../config/synergies";
-import { useMenuNavigation } from "../input/useMenuNavigation";
-import { createRef } from "react";
+import { createRef, useMemo } from 'react';
+import { AFFIXES } from '../../config/affixes';
+import { BOSSES } from '../../config/bosses';
+import { SYNERGY_DEFINITIONS } from '../../config/synergies';
+import { gameManager } from '../../game/GameManager';
+import { useMetaStore } from '../../state/useMetaStore';
+import { useRunStore } from '../../state/useRunStore';
+import { useUIStore } from '../../state/useUIStore';
+import { useMenuNavigation } from '../input/useMenuNavigation';
 
 export const SummaryScreen = () => {
   const lastRun = useRunStore((s) => s.lastRunSummary);
   const bestRun = useMetaStore((s) => s.bestRun);
   const bestRunsBySeed = useMetaStore((s) => s.bestRunsBySeed);
   const { setScreen } = useUIStore((s) => s.actions);
-  const isVictory = lastRun?.bossDefeated && lastRun?.mode !== "infinite";
+  const isVictory = lastRun?.bossDefeated && lastRun?.mode !== 'infinite';
   const synergies = lastRun?.synergies ?? [];
   const synergyDefs = synergies
     .map((id) => SYNERGY_DEFINITIONS.find((s) => s.id === id))
     .filter((s): s is (typeof SYNERGY_DEFINITIONS)[number] => Boolean(s));
 
   const formattedDuration = useMemo(() => {
-    if (!lastRun) return "--:--";
+    if (!lastRun) return '--:--';
     const minutes = Math.floor(lastRun.durationSeconds / 60)
       .toString()
-      .padStart(2, "0");
+      .padStart(2, '0');
     const seconds = Math.floor(lastRun.durationSeconds % 60)
       .toString()
-      .padStart(2, "0");
+      .padStart(2, '0');
     return `${minutes}:${seconds}`;
   }, [lastRun]);
 
@@ -42,25 +41,25 @@ export const SummaryScreen = () => {
         },
         disabled: !lastRun,
       },
-      { ref: titleRef, onActivate: () => setScreen("title"), disabled: !lastRun },
+      { ref: titleRef, onActivate: () => setScreen('title'), disabled: !lastRun },
     ],
-    { enabled: !!lastRun, columns: 2, onBack: () => setScreen("title") }
+    { enabled: !!lastRun, columns: 2, onBack: () => setScreen('title') }
   );
 
   if (!lastRun) return null;
 
   const seedBest = lastRun.seedId ? bestRunsBySeed[lastRun.seedId] : undefined;
   const modeLabel =
-    lastRun.mode === "infinite"
-      ? "Infinite run"
-      : lastRun.mode === "twin"
-      ? "Twin run (two ships, shared upgrades)"
-      : lastRun.mode === "standard"
-      ? "Standard run"
-      : null;
+    lastRun.mode === 'infinite'
+      ? 'Infinite run'
+      : lastRun.mode === 'twin'
+        ? 'Twin run (two ships, shared upgrades)'
+        : lastRun.mode === 'standard'
+          ? 'Standard run'
+          : null;
 
   return (
-    <div className={`overlay summary-screen ${isVictory ? "is-victory" : ""}`}>
+    <div className={`overlay summary-screen ${isVictory ? 'is-victory' : ''}`}>
       <div className="panel">
         {isVictory ? (
           <div className="victory-hero">
@@ -87,9 +86,13 @@ export const SummaryScreen = () => {
         </div>
         <div className="note">
           Seed: {lastRun.seedId}
-          {lastRun.bossId ? ` · Boss: ${BOSSES.find((b) => b.id === lastRun.bossId)?.name ?? lastRun.bossId}` : ""}
-          {lastRun.affixId ? ` · Affix: ${AFFIXES.find((a) => a.id === lastRun.affixId)?.name ?? lastRun.affixId}` : ""}
-          {modeLabel ? ` · ${modeLabel}` : ""}
+          {lastRun.bossId
+            ? ` · Boss: ${BOSSES.find((b) => b.id === lastRun.bossId)?.name ?? lastRun.bossId}`
+            : ''}
+          {lastRun.affixId
+            ? ` · Affix: ${AFFIXES.find((a) => a.id === lastRun.affixId)?.name ?? lastRun.affixId}`
+            : ''}
+          {modeLabel ? ` · ${modeLabel}` : ''}
         </div>
         <div className="upgrades-list">
           <div className="label">Upgrades</div>
@@ -120,23 +123,26 @@ export const SummaryScreen = () => {
         )}
         {seedBest && seedBest.runId !== lastRun.runId && (
           <div className="note">
-            Weekly best (Seed {lastRun.seedId}): Wave {seedBest.wavesCleared} · {Math.floor(seedBest.durationSeconds)}s
+            Weekly best (Seed {lastRun.seedId}): Wave {seedBest.wavesCleared} ·{' '}
+            {Math.floor(seedBest.durationSeconds)}s
           </div>
         )}
         <div className="actions">
           <button
+            type="button"
             ref={runAgainRef}
             tabIndex={0}
-            className={`primary ${nav.focusedIndex === 0 ? "nav-focused" : ""}`}
+            className={`primary ${nav.focusedIndex === 0 ? 'nav-focused' : ''}`}
             onClick={() => gameManager.startRun(undefined, { mode: lastRun.mode })}
           >
             Run Again
           </button>
           <button
+            type="button"
             ref={titleRef}
             tabIndex={0}
-            className={`ghost ${nav.focusedIndex === 1 ? "nav-focused" : ""}`}
-            onClick={() => setScreen("title")}
+            className={`ghost ${nav.focusedIndex === 1 ? 'nav-focused' : ''}`}
+            onClick={() => setScreen('title')}
           >
             Title
           </button>

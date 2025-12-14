@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { useInputStore } from "../../state/useInputStore";
-import { isPortrait } from "../../utils/device";
-import { useUIStore } from "../../state/useUIStore";
+import {
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { useInputStore } from '../../state/useInputStore';
+import { useUIStore } from '../../state/useUIStore';
+import { isPortrait } from '../../utils/device';
 
 const STICK_RADIUS = 50;
 
@@ -16,7 +22,7 @@ const clampStick = (dx: number, dy: number) => {
   return { x: normX * magnitude, y: normY * magnitude, magnitude };
 };
 
-type StickSide = "left" | "right";
+type StickSide = 'left' | 'right';
 
 export const TouchControls = () => {
   const isMobile = useInputStore((s) => s.isMobile);
@@ -37,11 +43,11 @@ export const TouchControls = () => {
 
   useEffect(() => {
     if (!isMobile) return;
-    const mql = window.matchMedia("(orientation: portrait)");
+    const mql = window.matchMedia('(orientation: portrait)');
     const handleChange = () => setPortrait(isPortrait());
     handleChange();
-    mql.addEventListener("change", handleChange);
-    return () => mql.removeEventListener("change", handleChange);
+    mql.addEventListener('change', handleChange);
+    return () => mql.removeEventListener('change', handleChange);
   }, [isMobile]);
 
   useEffect(() => {
@@ -50,12 +56,28 @@ export const TouchControls = () => {
     };
   }, []);
 
+  const updateStick = useCallback(
+    (side: StickSide, clientX: number, clientY: number) => {
+      const pointerId = side === 'left' ? leftPointerId.current : rightPointerId.current;
+      if (pointerId === null) return;
+      const origin = side === 'left' ? leftOrigin.current : rightOrigin.current;
+      const { x, y, magnitude } = clampStick(clientX - origin.x, clientY - origin.y);
+      const state = { active: magnitude > 0.01, x, y, magnitude };
+      if (side === 'left') {
+        updateLeftStick(state);
+      } else {
+        updateRightStick(state);
+      }
+    },
+    [updateLeftStick, updateRightStick]
+  );
+
   useEffect(() => {
     const handleMove = (ev: PointerEvent) => {
       if (ev.pointerId === leftPointerId.current) {
-        updateStick("left", ev.clientX, ev.clientY);
+        updateStick('left', ev.clientX, ev.clientY);
       } else if (ev.pointerId === rightPointerId.current) {
-        updateStick("right", ev.clientX, ev.clientY);
+        updateStick('right', ev.clientX, ev.clientY);
       }
     };
     const handleEnd = (ev: PointerEvent) => {
@@ -67,20 +89,20 @@ export const TouchControls = () => {
         rightPointerId.current = null;
       }
     };
-    window.addEventListener("pointermove", handleMove);
-    window.addEventListener("pointerup", handleEnd);
-    window.addEventListener("pointercancel", handleEnd);
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleEnd);
+    window.addEventListener('pointercancel', handleEnd);
     return () => {
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleEnd);
-      window.removeEventListener("pointercancel", handleEnd);
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleEnd);
+      window.removeEventListener('pointercancel', handleEnd);
     };
-  }, [releaseLeftStick, releaseRightStick]);
+  }, [releaseLeftStick, releaseRightStick, updateStick]);
 
-  if (!isMobile || screen !== "inGame" || upgradeOpen || pauseOpen) return null;
+  if (!isMobile || screen !== 'inGame' || upgradeOpen || pauseOpen) return null;
 
   const getOrigin = (side: StickSide) => {
-    const ref = side === "left" ? leftBaseRef.current : rightBaseRef.current;
+    const ref = side === 'left' ? leftBaseRef.current : rightBaseRef.current;
     if (!ref) return { x: 0, y: 0 };
     const rect = ref.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
@@ -89,10 +111,10 @@ export const TouchControls = () => {
   const beginStick = (side: StickSide, ev: ReactPointerEvent<HTMLDivElement>) => {
     setIsMobile(true);
     ev.preventDefault();
-    if (side === "left" && leftPointerId.current !== null) return;
-    if (side === "right" && rightPointerId.current !== null) return;
+    if (side === 'left' && leftPointerId.current !== null) return;
+    if (side === 'right' && rightPointerId.current !== null) return;
     const origin = getOrigin(side);
-    if (side === "left") {
+    if (side === 'left') {
       leftPointerId.current = ev.pointerId;
       leftOrigin.current = origin;
     } else {
@@ -103,25 +125,12 @@ export const TouchControls = () => {
     updateStick(side, ev.clientX, ev.clientY);
   };
 
-  const updateStick = (side: StickSide, clientX: number, clientY: number) => {
-    const pointerId = side === "left" ? leftPointerId.current : rightPointerId.current;
-    if (pointerId === null) return;
-    const origin = side === "left" ? leftOrigin.current : rightOrigin.current;
-    const { x, y, magnitude } = clampStick(clientX - origin.x, clientY - origin.y);
-    const state = { active: magnitude > 0.01, x, y, magnitude };
-    if (side === "left") {
-      updateLeftStick(state);
-    } else {
-      updateRightStick(state);
-    }
-  };
-
   const endStick = (side: StickSide, ev: ReactPointerEvent<HTMLDivElement>) => {
-    const pointerId = side === "left" ? leftPointerId.current : rightPointerId.current;
+    const pointerId = side === 'left' ? leftPointerId.current : rightPointerId.current;
     if (pointerId !== ev.pointerId) return;
     ev.preventDefault();
     ev.currentTarget.releasePointerCapture(ev.pointerId);
-    if (side === "left") {
+    if (side === 'left') {
       leftPointerId.current = null;
       releaseLeftStick();
     } else {
@@ -142,13 +151,13 @@ export const TouchControls = () => {
       )}
       <div
         className="touch-zone left"
-        onPointerDown={(ev) => beginStick("left", ev)}
+        onPointerDown={(ev) => beginStick('left', ev)}
         onPointerMove={(ev) => {
           ev.preventDefault();
-          updateStick("left", ev.clientX, ev.clientY);
+          updateStick('left', ev.clientX, ev.clientY);
         }}
-        onPointerUp={(ev) => endStick("left", ev)}
-        onPointerCancel={(ev) => endStick("left", ev)}
+        onPointerUp={(ev) => endStick('left', ev)}
+        onPointerCancel={(ev) => endStick('left', ev)}
       >
         <div className="touch-stick" ref={leftBaseRef}>
           <div className="stick-ring" />
@@ -163,13 +172,13 @@ export const TouchControls = () => {
       </div>
       <div
         className="touch-zone right"
-        onPointerDown={(ev) => beginStick("right", ev)}
+        onPointerDown={(ev) => beginStick('right', ev)}
         onPointerMove={(ev) => {
           ev.preventDefault();
-          updateStick("right", ev.clientX, ev.clientY);
+          updateStick('right', ev.clientX, ev.clientY);
         }}
-        onPointerUp={(ev) => endStick("right", ev)}
-        onPointerCancel={(ev) => endStick("right", ev)}
+        onPointerUp={(ev) => endStick('right', ev)}
+        onPointerCancel={(ev) => endStick('right', ev)}
       >
         <div className="touch-stick" ref={rightBaseRef}>
           <div className="stick-ring" />

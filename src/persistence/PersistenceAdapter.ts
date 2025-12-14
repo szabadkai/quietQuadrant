@@ -1,4 +1,4 @@
-import type { PerSeedBest, RunSummary, Settings } from "../models/types";
+import type { PerSeedBest, RunSummary, Settings } from '../models/types';
 
 export interface MetaStatePayload {
   schemaVersion: number;
