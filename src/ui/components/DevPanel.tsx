@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { gameManager } from "../../game/GameManager";
 import { UPGRADE_CATALOG } from "../../config/upgrades";
 import { SYNERGY_DEFINITIONS } from "../../config/synergies";
-import { WAVES } from "../../config/waves";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
 
@@ -28,7 +27,8 @@ export const DevPanel = () => {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const maxWave = WAVES.length;
+  const waveCap = useRunStore((s) => s.waveCap);
+  const maxWave = waveCap ?? 999;
   const filteredUpgrades = useMemo(() => {
     const query = filter.trim().toLowerCase();
     const sorted = [...UPGRADE_CATALOG].sort((a, b) => {

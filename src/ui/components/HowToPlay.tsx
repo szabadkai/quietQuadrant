@@ -32,7 +32,7 @@ export const HowToPlay = () => {
         </p>
         <div className="actions">
           <button className="primary" onClick={() => gameManager.startRun()}>
-            Begin Run
+            Weekly Run
           </button>
           <button className="ghost" onClick={() => setScreen("title")}>
             Back

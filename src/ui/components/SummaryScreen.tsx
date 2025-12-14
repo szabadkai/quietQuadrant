@@ -12,7 +12,7 @@ export const SummaryScreen = () => {
   const bestRun = useMetaStore((s) => s.bestRun);
   const bestRunsBySeed = useMetaStore((s) => s.bestRunsBySeed);
   const { setScreen } = useUIStore((s) => s.actions);
-  const isVictory = lastRun?.bossDefeated;
+  const isVictory = lastRun?.bossDefeated && lastRun?.mode !== "infinite";
   const synergies = lastRun?.synergies ?? [];
   const synergyDefs = synergies
     .map((id) => SYNERGY_DEFINITIONS.find((s) => s.id === id))
@@ -32,6 +32,8 @@ export const SummaryScreen = () => {
   if (!lastRun) return null;
 
   const seedBest = lastRun.seedId ? bestRunsBySeed[lastRun.seedId] : undefined;
+  const modeLabel =
+    lastRun.mode === "infinite" ? "Infinite run" : lastRun.mode === "standard" ? "Standard run" : null;
 
   return (
     <div className={`overlay summary-screen ${isVictory ? "is-victory" : ""}`}>
@@ -63,6 +65,7 @@ export const SummaryScreen = () => {
           Seed: {lastRun.seedId}
           {lastRun.bossId ? ` · Boss: ${BOSSES.find((b) => b.id === lastRun.bossId)?.name ?? lastRun.bossId}` : ""}
           {lastRun.affixId ? ` · Affix: ${AFFIXES.find((a) => a.id === lastRun.affixId)?.name ?? lastRun.affixId}` : ""}
+          {modeLabel ? ` · ${modeLabel}` : ""}
         </div>
         <div className="upgrades-list">
           <div className="label">Upgrades</div>
@@ -97,7 +100,10 @@ export const SummaryScreen = () => {
           </div>
         )}
         <div className="actions">
-          <button className="primary" onClick={() => gameManager.startRun()}>
+          <button
+            className="primary"
+            onClick={() => gameManager.startRun(undefined, { mode: lastRun.mode })}
+          >
             Run Again
           </button>
           <button className="ghost" onClick={() => setScreen("title")}>

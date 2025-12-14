@@ -4,7 +4,7 @@ import { MainScene } from "./scenes/MainScene";
 import { getWeeklySeed, hashSeed, Prng, pickFromList } from "../utils/seed";
 import { AFFIXES } from "../config/affixes";
 import { BOSSES } from "../config/bosses";
-import type { BossDefinition, WeeklyAffix } from "../models/types";
+import type { BossDefinition, RunMode, WeeklyAffix } from "../models/types";
 
 class GameManager {
   private game?: Phaser.Game;
@@ -40,13 +40,19 @@ class GameManager {
     this.seasonSeedValue = seedValue;
   }
 
-  startRun(seedId?: string, options?: { randomSeed?: boolean }) {
+  startRun(seedId?: string, options?: { randomSeed?: boolean; mode?: RunMode }) {
     if (!this.game) {
       this.init("game-root");
     }
     this.ensureSeason(seedId, options?.randomSeed);
     if (!this.seasonSeedId || !this.seasonSeedValue) return;
-    this.mainScene?.startNewRun(this.seasonSeedId, this.seasonSeedValue, this.currentAffix, this.seasonBoss);
+    this.mainScene?.startNewRun(
+      this.seasonSeedId,
+      this.seasonSeedValue,
+      this.currentAffix,
+      this.seasonBoss,
+      { mode: options?.mode }
+    );
   }
 
   applyUpgrade(id: string) {

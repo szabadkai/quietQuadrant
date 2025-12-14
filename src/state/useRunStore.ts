@@ -1,11 +1,14 @@
 import { create } from "zustand";
-import type { RunSummary, UpgradeInstance } from "../models/types";
+import { WAVES } from "../config/waves";
+import type { RunMode, RunSummary, UpgradeInstance } from "../models/types";
 
 export type RunStatus = "idle" | "running" | "paused" | "ended";
 
 interface RunState {
   runId: string | null;
   status: RunStatus;
+  mode: RunMode;
+  waveCap: number | null;
   currentWave: number;
   elapsedTime: number;
   currentUpgrades: UpgradeInstance[];
@@ -21,7 +24,7 @@ interface RunState {
   achievedSynergies: string[];
   lastRunSummary?: RunSummary;
   actions: {
-    startRun: (seedId: string) => void;
+    startRun: (seedId: string, opts?: { mode?: RunMode; waveCap?: number | null }) => void;
     endRun: (summary: RunSummary) => void;
     setWave: (wave: number) => void;
     addUpgrade: (upgrade: UpgradeInstance) => void;
@@ -39,6 +42,8 @@ interface RunState {
 const defaultState = (): Omit<RunState, "actions"> => ({
   runId: null,
   status: "idle",
+  mode: "standard",
+  waveCap: WAVES.length,
   currentWave: 1,
   elapsedTime: 0,
   currentUpgrades: [],
@@ -57,7 +62,7 @@ const defaultState = (): Omit<RunState, "actions"> => ({
 export const useRunStore = create<RunState>()((set, _get) => ({
   ...defaultState(),
   actions: {
-    startRun: (seedId) =>
+    startRun: (seedId, opts) =>
       set((state) => ({
         ...state,
         ...defaultState(),
@@ -65,6 +70,8 @@ export const useRunStore = create<RunState>()((set, _get) => ({
         status: "running",
         seedId,
         achievedSynergies: [],
+        mode: opts?.mode ?? "standard",
+        waveCap: opts?.waveCap ?? null,
       })),
     endRun: (summary) =>
       set((state) => ({

@@ -1,4 +1,3 @@
-import { WAVES } from "../../config/waves";
 import { useRunStore } from "../../state/useRunStore";
 import { useEffect, useState } from "react";
 import { gameManager } from "../../game/GameManager";
@@ -12,6 +11,7 @@ export const HUD = () => {
   const xp = useRunStore((s) => s.xp);
   const xpThreshold = useRunStore((s) => s.xpThreshold);
   const currentWave = useRunStore((s) => s.currentWave);
+  const waveCap = useRunStore((s) => s.waveCap);
   const elapsedTime = useRunStore((s) => s.elapsedTime);
   const currentSeed = useRunStore((s) => s.seedId);
   const [seasonInfo, setSeasonInfo] = useState(() => gameManager.getSeasonInfo());
@@ -60,7 +60,7 @@ export const HUD = () => {
           <div className="hud-top-line">
             <span className="label">Wave</span>
             <span className="metric">
-              {currentWave}/{WAVES.length}
+              {currentWave}/{waveCap ?? "∞"}
             </span>
           </div>
         </div>

@@ -2,6 +2,8 @@ export type Rarity = "common" | "rare" | "legendary";
 
 export type UpgradeTuning = Record<string, number>;
 
+export type RunMode = "standard" | "infinite";
+
 export interface UpgradeDefinition {
   id: string;
   name: string;
@@ -40,6 +42,7 @@ export interface RunSummary {
   bossId?: string;
   affixId?: string;
   synergies?: string[];
+  mode?: RunMode;
 }
 
 export interface Settings {

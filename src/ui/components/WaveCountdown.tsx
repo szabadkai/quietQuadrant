@@ -1,9 +1,9 @@
-import { WAVES } from "../../config/waves";
 import { useRunStore } from "../../state/useRunStore";
 
 export const WaveCountdown = () => {
   const countdown = useRunStore((s) => s.intermissionCountdown);
   const upcomingWave = useRunStore((s) => s.upcomingWave);
+  const waveCap = useRunStore((s) => s.waveCap);
 
   if (countdown === null || upcomingWave === null) return null;
 
@@ -11,7 +11,7 @@ export const WaveCountdown = () => {
     <div className="wave-countdown">
       <div className="wave-countdown__card">
         <div className="wave-countdown__badge">
-          Round {upcomingWave} / {WAVES.length}
+          Round {upcomingWave} / {waveCap ?? "∞"}
         </div>
         <div className="wave-countdown__timer">
           <span className="wave-countdown__digit">{countdown}</span>

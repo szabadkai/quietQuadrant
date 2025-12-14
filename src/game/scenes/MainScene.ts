@@ -15,6 +15,7 @@ import { useMetaStore } from "../../state/useMetaStore";
 import type {
     BossDefinition,
     EnemySpawn,
+    RunMode,
     UpgradeDefinition,
     WeeklyAffix,
 } from "../../models/types";
@@ -178,7 +179,13 @@ export class MainScene extends Phaser.Scene {
         sprite: Phaser.GameObjects.TileSprite;
         velocityX: number;
         velocityY: number;
+        colorFx?: Phaser.FX.ColorMatrix;
     }[] = [];
+    private backgroundFxTargets: Phaser.FX.ColorMatrix[] = [];
+    private backgroundFxTween?: Phaser.Tweens.Tween;
+    private bossIntroOverlay?: Phaser.GameObjects.Rectangle;
+    private playfieldBackdrop?: Phaser.GameObjects.Rectangle;
+    private bossIntroColor = 0xf14e4e;
 
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
@@ -209,6 +216,11 @@ export class MainScene extends Phaser.Scene {
     private bossPatternQueue: string[] = [];
     private bossPatternCursor = 0;
     private bossSpinAngle = 0;
+    private runMode: RunMode = "standard";
+    private infiniteMode = false;
+    private bossCleared = false;
+    private baseDifficulty = 1;
+    private enemyHealthScale = 1;
 
     constructor() {
         super("MainScene");
@@ -237,7 +249,8 @@ export class MainScene extends Phaser.Scene {
         seedId: string,
         seedValue: number,
         affix?: WeeklyAffix,
-        bossOverride?: BossDefinition
+        bossOverride?: BossDefinition,
+        options?: { mode?: RunMode }
     ) {
         this.seedId = seedId;
         this.rng = new Prng(seedValue);
@@ -248,8 +261,15 @@ export class MainScene extends Phaser.Scene {
         this.bossPatternQueue = this.shuffle(this.bossTemplate.patterns);
         this.bossPatternCursor = 0;
         this.bossSpinAngle = 0;
+        this.runMode = options?.mode ?? "standard";
+        this.infiniteMode = this.runMode === "infinite";
+        this.bossCleared = false;
         this.physics.world.resume();
-        useRunStore.getState().actions.startRun(seedId);
+        const waveCap = this.infiniteMode ? null : WAVES.length;
+        useRunStore.getState().actions.startRun(seedId, {
+            mode: this.runMode,
+            waveCap,
+        });
         this.resetState();
         useUIStore.getState().actions.setScreen("inGame");
         gameEvents.emit(GAME_EVENT_KEYS.runStarted);
@@ -340,7 +360,9 @@ export class MainScene extends Phaser.Scene {
             this.enemies.countActive(true) === 0 &&
             this.time.now > this.nextWaveCheckAt
         ) {
-            if (this.waveIndex < WAVES.length - 1) {
+            const hasNextWave =
+                this.infiniteMode || this.waveIndex < WAVES.length - 1;
+            if (hasNextWave) {
                 this.beginWaveIntermission(this.waveIndex + 1);
             }
         }
@@ -410,19 +432,13 @@ export class MainScene extends Phaser.Scene {
 
     private setupVisuals() {
         this.lowGraphics = useMetaStore.getState().settings.lowGraphicsMode;
+        this.backgroundFxTargets = [];
         this.createStarfieldTextures();
         this.createStarfieldLayers();
         this.syncStarfieldVisibility();
-        this.add
-            .rectangle(
-                GAME_WIDTH / 2,
-                GAME_HEIGHT / 2,
-                GAME_WIDTH - 16,
-                GAME_HEIGHT - 16,
-                0x0b0f13,
-                0.9
-            )
-            .setStrokeStyle(2, 0x1d2330);
+        this.createPlayfieldBackdrop();
+        this.setupBossIntroOverlay();
+        this.createBossTextures();
         this.createTexture("player", (g) => {
             const c = 32;
             g.fillStyle(0x0f1b2d, 1);
@@ -643,12 +659,143 @@ export class MainScene extends Phaser.Scene {
             if (def.blendAdd) {
                 sprite.setBlendMode(Phaser.BlendModes.ADD);
             }
+            const colorFx = this.registerBackgroundFxTarget(sprite);
             this.starfieldLayers.push({
                 sprite,
                 velocityX: def.velocityX,
                 velocityY: def.velocityY,
+                colorFx: colorFx ?? undefined,
             });
         });
+    }
+
+    private registerBackgroundFxTarget(
+        obj: Phaser.GameObjects.GameObject
+    ): Phaser.FX.ColorMatrix | null {
+        if (this.lowGraphics) return null;
+        const fxComponent = (obj as unknown as { postFX?: Phaser.GameObjects.Components.FX }).postFX;
+        if (!fxComponent || typeof fxComponent.addColorMatrix !== "function") return null;
+        const fx = fxComponent.addColorMatrix();
+        this.backgroundFxTargets.push(fx);
+        return fx;
+    }
+
+    private createPlayfieldBackdrop() {
+        this.playfieldBackdrop?.destroy();
+        this.playfieldBackdrop = this.add
+            .rectangle(
+                GAME_WIDTH / 2,
+                GAME_HEIGHT / 2,
+                GAME_WIDTH - 16,
+                GAME_HEIGHT - 16,
+                0x0b0f13,
+                0.94
+            )
+            .setStrokeStyle(2, 0x1d2330);
+        this.registerBackgroundFxTarget(this.playfieldBackdrop);
+    }
+
+    private createBossTextures() {
+        // Sentinel: keep the existing elliptical red core
+        this.createTexture("boss-sentinel", (g) => {
+            const c = 32;
+            g.fillStyle(0x180c13, 1);
+            g.fillEllipse(c, c, 58, 40);
+            g.lineStyle(4, 0xf14e4e);
+            g.strokeEllipse(c, c, 58, 40);
+            g.fillStyle(0x2a0f18, 1);
+            g.fillEllipse(c, c, 46, 28);
+            g.fillStyle(0xf14e4e, 0.8);
+            g.fillEllipse(c, c, 32, 18);
+            g.fillStyle(0xfafafa, 1);
+            g.fillCircle(c + 2, c - 2, 6);
+            g.fillStyle(0x0b0f13, 1);
+            g.fillCircle(c + 4, c - 2, 3);
+            g.lineStyle(3, 0xf14e4e, 0.9);
+            g.beginPath();
+            g.moveTo(c - 30, c - 10);
+            g.lineTo(c - 18, c - 24);
+            g.lineTo(c - 10, c - 6);
+            g.strokePath();
+            g.beginPath();
+            g.moveTo(c + 30, c - 10);
+            g.lineTo(c + 18, c - 24);
+            g.lineTo(c + 10, c - 6);
+            g.strokePath();
+        });
+
+        // Swarm Core: hexagon chassis with emerald glow
+        this.createTexture("boss-swarm-core", (g) => {
+            const c = 32;
+            const hull = [
+                { x: c, y: c - 26 },
+                { x: c + 22, y: c - 13 },
+                { x: c + 22, y: c + 13 },
+                { x: c, y: c + 26 },
+                { x: c - 22, y: c + 13 },
+                { x: c - 22, y: c - 13 },
+            ];
+            g.fillStyle(0x0e1811, 1);
+            g.fillPoints(hull, true);
+            g.lineStyle(4, 0x7de36f);
+            g.strokePoints(hull, true);
+            g.fillStyle(0x15321b, 1);
+            g.fillEllipse(c, c, 30, 22);
+            g.lineStyle(3, 0x9df07f, 0.9);
+            g.strokeEllipse(c, c, 28, 18);
+            g.fillStyle(0xb7ff99, 0.9);
+            g.fillCircle(c, c, 10);
+            g.fillStyle(0x1c3c22, 1);
+            g.fillCircle(c, c, 5);
+            g.lineStyle(2, 0xb7ff99, 0.8);
+            g.lineBetween(c - 16, c, c + 16, c);
+            g.lineBetween(c, c - 12, c, c + 12);
+        });
+
+        // Obelisk: tall monolith with violet runes
+        this.createTexture("boss-obelisk", (g) => {
+            const c = 32;
+            g.fillStyle(0x0f0c18, 1);
+            g.fillRoundedRect(c - 16, c - 30, 32, 60, 6);
+            g.lineStyle(4, 0x9d7bff);
+            g.strokeRoundedRect(c - 16, c - 30, 32, 60, 6);
+            g.fillStyle(0x1c1132, 1);
+            g.fillRoundedRect(c - 10, c - 20, 20, 40, 4);
+            g.lineStyle(3, 0xcab7ff, 0.95);
+            g.beginPath();
+            g.moveTo(c, c - 20);
+            g.lineTo(c + 12, c);
+            g.lineTo(c, c + 20);
+            g.lineTo(c - 12, c);
+            g.closePath();
+            g.strokePath();
+            g.fillStyle(0xcab7ff, 0.9);
+            g.fillCircle(c, c - 14, 4);
+            g.fillCircle(c, c, 5);
+            g.fillCircle(c, c + 14, 4);
+        });
+    }
+
+    private setupBossIntroOverlay() {
+        this.bossIntroOverlay?.destroy();
+        const overlay = this.add
+            .rectangle(
+                GAME_WIDTH / 2,
+                GAME_HEIGHT / 2,
+                GAME_WIDTH,
+                GAME_HEIGHT,
+                this.bossIntroColor,
+                0.28
+            )
+            .setDepth(5)
+            .setScrollFactor(0)
+            .setAlpha(0)
+            .setBlendMode(Phaser.BlendModes.MULTIPLY);
+        overlay.setVisible(false);
+        if (!this.lowGraphics) {
+            overlay.postFX.addVignette(0.5, 0.5, 0.9, 0.95);
+        }
+        this.bossIntroOverlay = overlay;
     }
 
     private syncStarfieldVisibility() {
@@ -661,6 +808,103 @@ export class MainScene extends Phaser.Scene {
             layer.sprite.tilePositionX += layer.velocityX * dt;
             layer.sprite.tilePositionY += layer.velocityY * dt;
         });
+    }
+
+    private applyBackgroundTone(saturationBoost: number, brightness: number) {
+        if (this.lowGraphics || this.backgroundFxTargets.length === 0) return;
+        this.backgroundFxTargets.forEach((fx) => {
+            fx.reset();
+            fx.saturate(saturationBoost);
+            fx.brightness(brightness, true);
+        });
+    }
+
+    private pulseBackgroundForBossPhase(phase: number) {
+        if (this.backgroundFxTween) {
+            this.backgroundFxTween.stop();
+            this.backgroundFxTween = undefined;
+        }
+        if (this.lowGraphics || this.backgroundFxTargets.length === 0) {
+            this.cameras.main.flash(220, 255, 94, 94);
+            return;
+        }
+        const targetSaturation = 0.9 + phase * 0.25;
+        const targetBrightness = 1.25 + phase * 0.1;
+        this.backgroundFxTween = this.tweens.addCounter({
+            from: 0,
+            to: 1,
+            duration: 320,
+            yoyo: true,
+            ease: "Quad.easeOut",
+            onUpdate: (tw) => {
+                const p = tw.getValue();
+                if (p === null) return;
+                const sat = Phaser.Math.Linear(0, targetSaturation, p);
+                const bright = Phaser.Math.Linear(1, targetBrightness, p);
+                this.applyBackgroundTone(sat, bright);
+            },
+            onComplete: () => {
+                this.applyBackgroundTone(0, 1);
+                this.backgroundFxTween = undefined;
+            },
+        });
+    }
+
+    private playBossIntroPulse() {
+        if (this.bossIntroOverlay) {
+            this.tweens.killTweensOf(this.bossIntroOverlay);
+            this.bossIntroOverlay.setVisible(true);
+            this.bossIntroOverlay.setAlpha(0);
+            this.bossIntroOverlay.setFillStyle(
+                this.bossIntroColor,
+                this.bossIntroOverlay.fillAlpha
+            );
+            this.tweens.add({
+                targets: this.bossIntroOverlay,
+                alpha: { from: 0, to: this.lowGraphics ? 0.4 : 0.82 },
+                duration: 180,
+                ease: "Quad.easeOut",
+                yoyo: true,
+                hold: 260,
+                onComplete: () => this.bossIntroOverlay?.setVisible(false),
+            });
+        } else {
+            const rgb = Phaser.Display.Color.IntegerToRGB(this.bossIntroColor);
+            this.cameras.main.flash(220, rgb.r, rgb.g, rgb.b);
+        }
+        this.pulseBackgroundForBossPhase(this.bossPhase || 1);
+    }
+
+    private getBossVisuals(id?: string): {
+        textureKey: string;
+        tint?: number;
+        overlayColor?: number;
+        scale?: number;
+    } {
+        switch (id) {
+            case "swarm-core":
+                return {
+                    textureKey: "boss-swarm-core",
+                    tint: 0x9df07f,
+                    overlayColor: 0x8fe876,
+                    scale: 2.1,
+                };
+            case "obelisk":
+                return {
+                    textureKey: "boss-obelisk",
+                    tint: 0xcab7ff,
+                    overlayColor: 0xa07bff,
+                    scale: 2.3,
+                };
+            case "sentinel":
+            default:
+                return {
+                    textureKey: "boss-sentinel",
+                    tint: 0xf14e4e,
+                    overlayColor: 0xf14e4e,
+                    scale: 2,
+                };
+        }
     }
 
     private spawnPlayer() {
@@ -788,7 +1032,21 @@ export class MainScene extends Phaser.Scene {
         const settings = useMetaStore.getState().settings;
         this.lowGraphics = settings.lowGraphicsMode;
         this.syncStarfieldVisibility();
-        this.difficulty = 1;
+        this.backgroundFxTween?.stop();
+        this.backgroundFxTween = undefined;
+        this.applyBackgroundTone(0, 1);
+        if (this.bossIntroOverlay) {
+            this.bossIntroOverlay.setAlpha(0);
+            this.bossIntroOverlay.setVisible(false);
+        }
+        this.bossIntroColor = 0xf14e4e;
+        this.baseDifficulty =
+            typeof settings.difficultyMultiplier === "number"
+                ? settings.difficultyMultiplier
+                : 1;
+        this.difficulty = this.baseDifficulty;
+        this.enemyHealthScale = 1;
+        this.bossCleared = false;
         this.playerStats = {
             moveSpeed: 240,
             damage: 12,
@@ -2304,7 +2562,13 @@ export class MainScene extends Phaser.Scene {
         this.tryChainArc(enemy);
         this.tryKineticHeal();
         if (kind === "boss") {
-            this.endRun(true);
+            this.bossCleared = true;
+            this.boss = undefined;
+            this.bossMaxHealth = 0;
+            this.bossPhase = 1;
+            if (!this.infiniteMode) {
+                this.endRun(true);
+            }
         }
     }
 
@@ -2478,8 +2742,11 @@ export class MainScene extends Phaser.Scene {
     }
 
     private rollUpgradeOptions(): UpgradeDefinition[] {
+        const sidecarStacks = this.upgradeStacks["sidecar"] ?? 0;
         const available = UPGRADE_CATALOG.filter((u) => {
             const stacks = this.upgradeStacks[u.id] ?? 0;
+            // Prism Spread only matters when Sidecar is active; hide it until then.
+            if (u.id === "prism-spread" && sidecarStacks === 0) return false;
             return u.maxStacks ? stacks < u.maxStacks : true;
         });
         const picks: UpgradeDefinition[] = [];
@@ -2836,6 +3103,68 @@ export class MainScene extends Phaser.Scene {
         }
     }
 
+    private computeWaveScaling(index: number) {
+        const overflow =
+            this.infiniteMode && index >= WAVES.length
+                ? index - (WAVES.length - 1)
+                : 0;
+        const speedAndFire =
+            this.baseDifficulty * (overflow > 0 ? 1 + overflow * 0.22 : 1);
+        const healthScale =
+            this.baseDifficulty *
+            (overflow > 0 ? Math.pow(1.18, overflow) : 1);
+        const countScale = overflow > 0 ? 1 + overflow * 0.35 : 1;
+        return { speedAndFire, healthScale, countScale };
+    }
+
+    private getWaveSpawns(index: number, countScale: number): EnemySpawn[] {
+        if (!this.infiniteMode && index >= WAVES.length) {
+            return WAVES[WAVES.length - 1]?.enemies ?? [];
+        }
+
+        if (index < WAVES.length) {
+            return WAVES[index].enemies.map((spawn) =>
+                spawn.kind === "boss"
+                    ? spawn
+                    : {
+                          ...spawn,
+                          count: Math.max(
+                              1,
+                              Math.round(spawn.count * countScale)
+                          ),
+                      }
+            );
+        }
+
+        const overflow = index - (WAVES.length - 1);
+        const basePoolRaw = WAVES.slice(
+            Math.max(2, WAVES.length - 4),
+            WAVES.length - 1
+        );
+        const basePool =
+            basePoolRaw.length > 0
+                ? basePoolRaw
+                : WAVES.slice(0, Math.max(1, WAVES.length - 1));
+        const loopIndex = Math.max(0, overflow - 1);
+        const template =
+            basePool[loopIndex % basePool.length] ??
+            WAVES[Math.max(0, WAVES.length - 2)];
+        const eliteBonusChance = Math.min(0.35, 0.12 + overflow * 0.03);
+
+        return template.enemies.map((spawn) => {
+            if (spawn.kind === "boss") return spawn;
+            const baseCount = Math.max(
+                1,
+                Math.round(spawn.count * countScale)
+            );
+            const elite =
+                spawn.elite !== undefined
+                    ? spawn.elite
+                    : this.rng.next() < eliteBonusChance;
+            return { ...spawn, count: baseCount, elite };
+        });
+    }
+
     private startWave(index: number) {
         this.waveIndex = index;
         this.intermissionActive = false;
@@ -2844,8 +3173,12 @@ export class MainScene extends Phaser.Scene {
         this.lastCountdownBroadcast = 0;
         useRunStore.getState().actions.setWaveCountdown(null, null);
         useRunStore.getState().actions.setWave(index + 1);
+        const scaling = this.computeWaveScaling(index);
+        this.difficulty = scaling.speedAndFire;
+        this.enemyHealthScale = scaling.healthScale;
         gameEvents.emit(GAME_EVENT_KEYS.waveStarted, { wave: index + 1 });
-        this.spawnWaveEnemies(WAVES[index].enemies);
+        const spawns = this.getWaveSpawns(index, scaling.countScale);
+        this.spawnWaveEnemies(spawns);
         this.nextWaveCheckAt = this.time.now + 700;
     }
 
@@ -2891,7 +3224,8 @@ export class MainScene extends Phaser.Scene {
         const stats = getEnemyDefinition(kind as any, elite);
         const enemyHealthMult = this.affix?.enemyHealthMultiplier ?? 1;
         const enemySpeedMult = this.affix?.enemySpeedMultiplier ?? 1;
-        const maxHealth = stats.health * enemyHealthMult;
+        const maxHealth =
+            stats.health * enemyHealthMult * this.enemyHealthScale;
         enemy.setData("kind", kind);
         enemy.setData("health", maxHealth);
         enemy.setData("maxHealth", maxHealth);
@@ -2919,19 +3253,27 @@ export class MainScene extends Phaser.Scene {
     }
 
     private spawnBoss() {
+        const visuals = this.getBossVisuals(this.bossTemplate?.id);
+        const textureKey = visuals.textureKey;
         this.boss = this.enemies.get(
             GAME_WIDTH / 2,
             140,
-            "boss"
+            textureKey
         ) as Phaser.Physics.Arcade.Image;
         if (!this.boss) return;
         this.boss.setActive(true);
         this.boss.setVisible(true);
         this.boss.setScale(OBJECT_SCALE * 2);
+        if (visuals.scale) {
+            this.boss.setScale(OBJECT_SCALE * visuals.scale);
+        }
         this.boss.setData("kind", "boss");
         const base = getEnemyDefinition("boss");
         const tuning = this.bossTemplate?.tuning ?? {};
-        const health = base.health * (tuning.healthMultiplier ?? 1);
+        const health =
+            base.health *
+            (tuning.healthMultiplier ?? 1) *
+            this.enemyHealthScale;
         const speed = base.speed * (tuning.speedMultiplier ?? 1);
         const fireCooldownBase = base.fireCooldown ?? 1.2;
         const fireRateMultiplier = tuning.fireRateMultiplier ?? 1;
@@ -2957,6 +3299,13 @@ export class MainScene extends Phaser.Scene {
         bossBody.setImmovable(false);
         bossBody.setCollideWorldBounds(true);
         bossBody.setDrag(60, 60);
+        if (visuals.tint) {
+            this.boss.setTint(visuals.tint);
+        } else {
+            this.boss.clearTint();
+        }
+        this.bossIntroColor = visuals.overlayColor ?? 0xf14e4e;
+        this.playBossIntroPulse();
     }
 
     private handlePlayerDamage(
@@ -3096,6 +3445,7 @@ export class MainScene extends Phaser.Scene {
         if (hpPct < 0.33) phase = 3;
         if (phase !== this.bossPhase) {
             this.bossPhase = phase;
+            this.pulseBackgroundForBossPhase(phase);
             gameEvents.emit(GAME_EVENT_KEYS.bossPhaseChanged, { phase });
         }
     }
@@ -3114,13 +3464,14 @@ export class MainScene extends Phaser.Scene {
             timestamp: Date.now(),
             durationSeconds,
             wavesCleared: this.waveIndex + 1,
-            bossDefeated: victory,
+            bossDefeated: victory || this.bossCleared,
             enemiesDestroyed: state.enemiesDestroyed,
             upgrades: state.currentUpgrades,
             seedId: state.seedId ?? this.seedId,
             bossId: this.bossTemplate?.id,
             affixId: this.affix?.id,
             synergies: state.achievedSynergies,
+            mode: this.runMode,
         };
         state.actions.setWaveCountdown(null, null);
         state.actions.endRun(summary);
@@ -3139,7 +3490,9 @@ export class MainScene extends Phaser.Scene {
 
     // Dev helper: jump directly to a wave for testing.
     debugSetWave(waveNumber: number) {
-        const target = Phaser.Math.Clamp(waveNumber - 1, 0, WAVES.length - 1);
+        const target = this.infiniteMode
+            ? Math.max(0, waveNumber - 1)
+            : Phaser.Math.Clamp(waveNumber - 1, 0, WAVES.length - 1);
         this.enemies.clear(true, true);
         this.enemyBullets.clear(true, true);
         this.xpPickups.clear(true, true);

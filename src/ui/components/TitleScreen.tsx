@@ -23,6 +23,10 @@ export const TitleScreen = () => {
     gameManager.startRun(undefined, { randomSeed: true });
   };
 
+  const startInfinite = () => {
+    gameManager.startRun(undefined, { mode: "infinite" });
+  };
+
   useEffect(() => {
     setSeasonInfo(gameManager.getSeasonInfo());
   }, []);
@@ -38,15 +42,19 @@ export const TitleScreen = () => {
         </p>
         <div className="actions">
           <button className="primary" onClick={start}>
-            Begin Run
+            Weekly Run
           </button>
           <button className="ghost" onClick={startRandom}>
             Random Seed Run
+          </button>
+          <button className="ghost" onClick={startInfinite}>
+            Infinite Mode
           </button>
           <button className="ghost" onClick={() => setScreen("howToPlay")}>
             How to Play
           </button>
         </div>
+        <div className="note">Infinite Mode keeps looping past wave 11 with fast-scaling enemies.</div>
         {seasonInfo && (
           <div className="season-card">
             <div className="tiny label">This Week</div>
