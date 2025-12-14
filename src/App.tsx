@@ -125,15 +125,17 @@ function App() {
 
   return (
     <div className="app-shell">
-      <GameCanvas />
-      <HUD />
-      <WaveCountdown />
-      <UpgradeOverlay />
-      <PauseMenu />
+      <div className="playfield">
+        <GameCanvas />
+        <HUD />
+        <WaveCountdown />
+        <UpgradeOverlay />
+        <PauseMenu />
+        {import.meta.env.DEV && <DevPanel />}
+      </div>
       {screen === "title" && <TitleScreen />}
       {screen === "howToPlay" && <HowToPlay />}
       {screen === "summary" && <SummaryScreen />}
-      {import.meta.env.DEV && <DevPanel />}
     </div>
   );
 }

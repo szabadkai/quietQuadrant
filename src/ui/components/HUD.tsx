@@ -35,49 +35,60 @@ export const HUD = () => {
     <div className="hud">
       <div className="hud-row">
         <div className="hud-block">
-          <div className="label">Hull</div>
+          <div className="hud-top-line">
+            <span className="label">Hull</span>
+            <span className="tiny">
+              {playerHealth.toFixed(1)} / {playerMaxHealth}
+            </span>
+          </div>
           <div className="bar">
             <div className="bar-fill health" style={{ width: `${healthPct}%` }} />
           </div>
-          <div className="tiny">
-            {playerHealth.toFixed(1)} / {playerMaxHealth}
-          </div>
         </div>
         <div className="hud-block">
-          <div className="label">XP</div>
+          <div className="hud-top-line">
+            <span className="label">XP</span>
+            <span className="tiny">
+              Lv {playerLevel} · {Math.floor(xp)} / {xpThreshold}
+            </span>
+          </div>
           <div className="bar">
             <div className="bar-fill xp" style={{ width: `${xpPct}%` }} />
           </div>
-          <div className="tiny">
-            Lv {playerLevel} · {Math.floor(xp)} / {xpThreshold}
+        </div>
+        <div className="hud-block compact">
+          <div className="hud-top-line">
+            <span className="label">Wave</span>
+            <span className="metric">
+              {currentWave}/{WAVES.length}
+            </span>
           </div>
         </div>
         <div className="hud-block compact">
-          <div className="label">Wave</div>
-          <div className="metric">
-            {currentWave}/{WAVES.length}
-          </div>
-        </div>
-        <div className="hud-block compact">
-          <div className="label">Clock</div>
-          <div className="metric">
-            {minutes}:{seconds}
+          <div className="hud-top-line">
+            <span className="label">Clock</span>
+            <span className="metric">
+              {minutes}:{seconds}
+            </span>
           </div>
         </div>
         {seasonInfo && (
           <div className="hud-block compact affix-block">
-            <div className="label">Weekly</div>
-            <div className="tiny truncate">
-              Seed {seasonInfo.seedId} ·{" "}
-              {seasonInfo.boss
-                ? BOSSES.find((b) => b.id === seasonInfo.boss?.id)?.name ?? seasonInfo.boss.id
-                : "—"}
+            <div className="hud-top-line">
+              <span className="label">Weekly</span>
+              <span className="tiny truncate">Seed {seasonInfo.seedId}</span>
             </div>
-            <div className="tiny truncate">
-              Affix:{" "}
-              {seasonInfo.affix
-                ? AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ?? seasonInfo.affix.id
-                : "—"}
+            <div className="hud-bottom-line">
+              <span className="tiny truncate">
+                {seasonInfo.boss
+                  ? BOSSES.find((b) => b.id === seasonInfo.boss?.id)?.name ?? seasonInfo.boss.id
+                  : "Boss: —"}
+              </span>
+              <span className="tiny truncate" style={{ textAlign: "right" }}>
+                {seasonInfo.affix
+                  ? AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ?? seasonInfo.affix.id
+                  : "Affix: —"}
+              </span>
             </div>
           </div>
         )}

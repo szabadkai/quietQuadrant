@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { gameManager } from "../../game/GameManager";
 import { UPGRADE_CATALOG } from "../../config/upgrades";
 import { SYNERGY_DEFINITIONS } from "../../config/synergies";
@@ -14,9 +14,19 @@ export const DevPanel = () => {
   const [waveInput, setWaveInput] = useState(1);
   const [count, setCount] = useState(1);
   const [filter, setFilter] = useState("");
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   if (!import.meta.env.DEV) return null;
+
+  useEffect(() => {
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (!ev.shiftKey) return;
+      if (ev.key.toLowerCase() !== "d") return;
+      setOpen((prev) => !prev);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const maxWave = WAVES.length;
   const filteredUpgrades = useMemo(() => {
@@ -59,15 +69,7 @@ export const DevPanel = () => {
     gameManager.debugSetWave(wave);
   };
 
-  if (!open) {
-    return (
-      <button className="dev-toggle" onClick={() => setOpen(true)}>
-        Open Dev Panel
-      </button>
-    );
-  }
-
-  if (screen !== "inGame") return null;
+  if (screen !== "inGame" || !open) return null;
 
   return (
     <div className="dev-panel">
