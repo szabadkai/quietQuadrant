@@ -78,7 +78,7 @@ export const TitleScreen = () => {
             className={`ghost ${nav.focusedIndex === 1 ? "nav-focused" : ""}`}
             onClick={startRandom}
           >
-            Random Seed Run
+            Random Run
           </button>
           <button
             ref={twinRef}
@@ -86,7 +86,7 @@ export const TitleScreen = () => {
             className={`ghost ${nav.focusedIndex === 2 ? "nav-focused" : ""}`}
             onClick={startTwin}
           >
-            Twin Mode (Hotseat)
+            Twin Mode
           </button>
           <button
             ref={infiniteRef}
@@ -105,12 +105,7 @@ export const TitleScreen = () => {
             How to Play
           </button>
         </div>
-        <div className="note">
-          Twin Mode lets two players hotseat the same run and share upgrades; each wave spawns 50% more
-          enemies, but your shots deal 20% more damage to make up for the chaos. Plug in two controllers—right stick
-          auto-fires, and the last pad to move takes over (Back/View hands control off).
-        </div>
-        <div className="note">Infinite Mode keeps looping past wave 11 with fast-scaling enemies.</div>
+        <br></br>
         {seasonInfo && (
           <div className="season-card">
             <div className="tiny label">This Week</div>
