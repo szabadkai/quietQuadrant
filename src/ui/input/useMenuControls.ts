@@ -7,6 +7,7 @@ type MenuInput = {
   back: boolean;
   tabLeft: boolean;
   tabRight: boolean;
+  serial: number;
 };
 
 const DEADZONE = 0.35;
@@ -19,12 +20,39 @@ const initialInput: MenuInput = {
   back: false,
   tabLeft: false,
   tabRight: false,
+  serial: 0,
 };
 
 export function useMenuControls(enabled: boolean) {
   const [input, setInput] = useState<MenuInput>(initialInput);
   const lastAxisFire = useRef({ x: 0, y: 0, time: 0 });
   const rafRef = useRef<number | null>(null);
+  const serialRef = useRef(0);
+  const lastButtons = useRef({
+    confirm: false,
+    back: false,
+    tabLeft: false,
+    tabRight: false,
+  });
+
+  const readPadButtons = () => {
+    const pads = navigator.getGamepads?.() ?? [];
+    const pad = pads.find((p) => p && p.connected) ?? null;
+    if (!pad) return null;
+    const confirm =
+      pad.buttons[0]?.pressed || // south
+      pad.buttons[1]?.pressed || // east
+      pad.buttons[5]?.pressed || // RB/R1
+      pad.buttons[7]?.value > 0.3; // RT/R2
+    const back =
+      pad.buttons[1]?.pressed || // east (B on Xbox/Pro)
+      pad.buttons[2]?.pressed || // west
+      pad.buttons[8]?.pressed || // back/view/minus
+      pad.buttons[16]?.pressed; // extra back on some pads
+    const tabLeft = pad.buttons[4]?.pressed || pad.buttons[6]?.value > 0.3; // LB/L1 or LT/L2
+    const tabRight = pad.buttons[5]?.pressed || pad.buttons[7]?.value > 0.3; // RB/R1 or RT/R2
+    return { confirm, back, tabLeft, tabRight };
+  };
 
   useEffect(() => {
     if (!enabled) {
@@ -32,42 +60,49 @@ export function useMenuControls(enabled: boolean) {
       return;
     }
 
+    const snapshot = readPadButtons();
+    if (snapshot) {
+      lastButtons.current = snapshot;
+    }
+
     const handleKey = (e: KeyboardEvent) => {
-      if (!enabled) return;
+      if (!enabled || e.repeat) return;
+      const bump = () => ++serialRef.current;
       switch (e.key) {
         case "ArrowLeft":
         case "a":
         case "A":
-          setInput({ ...initialInput, moveX: -1 });
+          e.preventDefault();
+          setInput({ ...initialInput, moveX: -1, serial: bump() });
           break;
         case "ArrowRight":
         case "d":
         case "D":
-          setInput({ ...initialInput, moveX: 1 });
+          e.preventDefault();
+          setInput({ ...initialInput, moveX: 1, serial: bump() });
           break;
         case "ArrowUp":
         case "w":
         case "W":
-          setInput({ ...initialInput, moveY: -1 });
+          e.preventDefault();
+          setInput({ ...initialInput, moveY: -1, serial: bump() });
           break;
         case "ArrowDown":
         case "s":
         case "S":
-          setInput({ ...initialInput, moveY: 1 });
-          break;
-        case "Enter":
-        case " ":
-          setInput({ ...initialInput, confirm: true });
+          e.preventDefault();
+          setInput({ ...initialInput, moveY: 1, serial: bump() });
           break;
         case "Escape":
         case "Backspace":
-          setInput({ ...initialInput, back: true });
+          e.preventDefault();
+          setInput({ ...initialInput, back: true, serial: bump() });
           break;
         case "Tab":
           if (e.shiftKey) {
-            setInput({ ...initialInput, tabLeft: true });
+            setInput({ ...initialInput, tabLeft: true, serial: bump() });
           } else {
-            setInput({ ...initialInput, tabRight: true });
+            setInput({ ...initialInput, tabRight: true, serial: bump() });
           }
           e.preventDefault();
           break;
@@ -106,18 +141,11 @@ export function useMenuControls(enabled: boolean) {
         const moveX = dpadX !== 0 ? dpadX : axisX;
         const moveY = dpadY !== 0 ? dpadY : axisY;
 
-        const confirm =
-          pad.buttons[0]?.pressed || // south
-          pad.buttons[1]?.pressed || // east
-          pad.buttons[5]?.pressed || // RB/R1
-          pad.buttons[7]?.value > 0.3; // RT/R2
-        const back =
-          pad.buttons[1]?.pressed || // east (B on Xbox/Pro)
-          pad.buttons[2]?.pressed || // west
-          pad.buttons[8]?.pressed || // back/view/minus
-          pad.buttons[16]?.pressed; // extra back on some pads
-        const tabLeft = pad.buttons[4]?.pressed || pad.buttons[6]?.value > 0.3; // LB/L1 or LT/L2
-        const tabRight = pad.buttons[5]?.pressed || pad.buttons[7]?.value > 0.3; // RB/R1 or RT/R2
+        const btnSnapshot = readPadButtons();
+        const confirm = btnSnapshot?.confirm ?? false;
+        const back = btnSnapshot?.back ?? false;
+        const tabLeft = btnSnapshot?.tabLeft ?? false;
+        const tabRight = btnSnapshot?.tabRight ?? false;
 
         const last = lastAxisFire.current;
         let emitX = 0;
@@ -137,14 +165,27 @@ export function useMenuControls(enabled: boolean) {
           last.y = 0;
         }
 
-        if (emitX || emitY || confirm || back || tabLeft || tabRight) {
+        const confirmEdge = confirm && !lastButtons.current.confirm;
+        const backEdge = back && !lastButtons.current.back;
+        const tabLeftEdge = tabLeft && !lastButtons.current.tabLeft;
+        const tabRightEdge = tabRight && !lastButtons.current.tabRight;
+
+        lastButtons.current = {
+          confirm,
+          back,
+          tabLeft,
+          tabRight,
+        };
+
+        if (emitX || emitY || confirmEdge || backEdge || tabLeftEdge || tabRightEdge) {
           setInput({
             moveX: (emitX as -1 | 0 | 1) ?? 0,
             moveY: (emitY as -1 | 0 | 1) ?? 0,
-            confirm,
-            back,
-            tabLeft,
-            tabRight,
+            confirm: confirmEdge,
+            back: backEdge,
+            tabLeft: tabLeftEdge,
+            tabRight: tabRightEdge,
+            serial: ++serialRef.current,
           });
         }
       }
@@ -157,22 +198,6 @@ export function useMenuControls(enabled: boolean) {
       rafRef.current = null;
     };
   }, [enabled]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    if (
-      input.moveX !== 0 ||
-      input.moveY !== 0 ||
-      input.confirm ||
-      input.back ||
-      input.tabLeft ||
-      input.tabRight
-    ) {
-      // Clear after one tick so consumers get edge-triggered events.
-      const id = setTimeout(() => setInput(initialInput), 0);
-      return () => clearTimeout(id);
-    }
-  }, [enabled, input]);
 
   return input;
 }

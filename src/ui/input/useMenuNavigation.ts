@@ -7,6 +7,7 @@ export type MenuNavItem = {
   lockHorizontal?: boolean;
   onAdjust?: (dir: -1 | 1) => void;
   onActivate?: () => void;
+  onFocus?: () => void;
 };
 
 type NavOptions = {
@@ -22,6 +23,7 @@ export function useMenuNavigation(items: MenuNavItem[], options: NavOptions) {
   const controls = useMenuControls(enabled);
   const count = items.length;
   const focusTimer = useRef<number | null>(null);
+  const lastSerial = useRef(0);
 
   useEffect(() => {
     if (!enabled) return;
@@ -37,8 +39,11 @@ export function useMenuNavigation(items: MenuNavItem[], options: NavOptions) {
 
   const focusItem = (idx: number) => {
     const item = items[idx];
-    if (!item || !item.ref.current) return;
-    item.ref.current.focus({ preventScroll: true });
+    if (!item) return;
+    item.onFocus?.();
+    const el = item.ref.current;
+    if (!el) return;
+    el.focus({ preventScroll: true });
   };
 
   const isDisabled = (idx: number) =>
@@ -57,10 +62,10 @@ export function useMenuNavigation(items: MenuNavItem[], options: NavOptions) {
       }
       guard += 1;
     }
-    if (!loop) {
-      next = Math.max(0, Math.min(count - 1, next));
-    } else {
+    if (loop) {
       next = (next + count) % count;
+    } else {
+      next = Math.max(0, Math.min(count - 1, next));
     }
     setIndex(next);
     focusItem(next);
@@ -82,6 +87,8 @@ export function useMenuNavigation(items: MenuNavItem[], options: NavOptions) {
 
   useEffect(() => {
     if (!enabled) return;
+    if (controls.serial === lastSerial.current) return;
+    lastSerial.current = controls.serial;
     const current = items[index];
     if (controls.back) {
       onBack?.();

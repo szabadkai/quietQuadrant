@@ -101,10 +101,12 @@ export const LeaderboardModal = () => {
     [
       {
         ref: tabRefs.weekly,
+        onFocus: () => setTab("weekly"),
         onActivate: () => setTab("weekly"),
       },
       {
         ref: tabRefs.all,
+        onFocus: () => setTab("all"),
         onActivate: () => setTab("all"),
       },
       ...rows.map((run, idx) => ({
