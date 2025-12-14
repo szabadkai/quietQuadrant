@@ -3,7 +3,9 @@
  * Provides clean imports for all system interfaces
  */
 
-export * from './EnemySystem';
-export * from './GameSystem';
-export * from './PlayerSystem';
-export * from './ProjectileSystem';
+export * from "./EnemySystem";
+export * from "./GameSystem";
+export * from "./PlayerSystem";
+export * from "./ProjectileSystem";
+export * from "./UpgradeSystem";
+export * from "./VFXSystem";

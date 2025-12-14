@@ -79,8 +79,16 @@ Below is a concise technical specification for **Quiet Quadrant**.
         -   Minimal “how to play”
     -   `game/`
         -   `GameConfig.ts` – Phaser configuration.
-        -   `scenes/` – MainScene, UIBridgeScene if needed.
-        -   `systems/` – wave system, enemy factory, upgrade application, boss logic.
+        -   `scenes/` – MainScene (lightweight system orchestrator).
+        -   `systems/` – Modular game systems architecture:
+            -   `PlayerSystem.ts` – Player movement, input, stats, abilities.
+            -   `EnemySystem.ts` – Enemy spawning, AI, wave management.
+            -   `ProjectileSystem.ts` – Bullet physics, collision, effects.
+            -   `UpgradeSystem.ts` – Upgrade logic, synergy calculations.
+            -   `VFXSystem.ts` – Visual effects, particles, screen effects.
+            -   `SystemRegistry.ts` – System lifecycle management.
+            -   `EventBus.ts` – Inter-system communication.
+            -   Helper modules: CollisionHandler, EffectProcessor, WaveManager, EnemySpawner, etc.
     -   `state/`
         -   `useRunStore.ts` – in‑run and recent‑run metadata.
         -   `useMetaStore.ts` – settings, high scores, unlocks (future).
