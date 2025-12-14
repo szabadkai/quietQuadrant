@@ -4,7 +4,27 @@ const soundtrackImports = import.meta.glob("./music/*.{mp3,ogg,wav}", {
   eager: true,
 });
 
-const SOUNDTRACK_URLS = Object.values(soundtrackImports).map((mod) => (mod as { default: string }).default);
+const SOUNDTRACK_FILES = {
+  title: "Juhani Junkala [Retro Game Music Pack] Title Screen.mp3",
+  firstLevel: "Juhani Junkala [Retro Game Music Pack] Ending.mp3",
+  otherLevels: [
+    "Juhani Junkala [Retro Game Music Pack] Level 1.mp3",
+    "Juhani Junkala [Retro Game Music Pack] Level 2.mp3",
+    "Juhani Junkala [Retro Game Music Pack] Level 3.mp3",
+  ],
+} as const;
+
+const getTrackUrl = (fileName: string) =>
+  (soundtrackImports[`./music/${fileName}`] as { default: string } | undefined)?.default;
+
+const TITLE_TRACK_URL = getTrackUrl(SOUNDTRACK_FILES.title);
+const FIRST_LEVEL_TRACK_URL = getTrackUrl(SOUNDTRACK_FILES.firstLevel);
+const OTHER_LEVEL_TRACKS = SOUNDTRACK_FILES.otherLevels
+  .map((file) => getTrackUrl(file))
+  .filter(Boolean) as string[];
+const ALL_TRACK_URLS = Object.values(soundtrackImports).map(
+  (mod) => (mod as { default: string }).default
+);
 
 type SfxKey = "uiHover" | "uiSelect" | "shoot" | "enemyDown" | "xpPickup";
 
@@ -15,6 +35,8 @@ class SoundtrackPlayer {
   private currentIndex = 0;
   private currentElement?: HTMLAudioElement;
   private source?: MediaElementAudioSourceNode;
+  private elementVolume = 1;
+  private currentTrackUrl?: string;
   private ctx: AudioContext;
   private destination: GainNode;
 
@@ -28,7 +50,15 @@ class SoundtrackPlayer {
     this.currentIndex = 0;
   }
 
+  playPlaylist(urls: string[], options?: { shuffle?: boolean; startIndex?: number }) {
+    const list = options?.shuffle === false ? [...urls] : shuffle(urls);
+    this.trackUrls = list;
+    this.currentIndex = Math.max(0, Math.min(options?.startIndex ?? 0, this.trackUrls.length - 1));
+    this.playTrack(this.currentIndex);
+  }
+
   setVolume(volume: number) {
+    this.elementVolume = volume;
     if (this.currentElement) {
       this.currentElement.volume = volume;
     }
@@ -53,19 +83,22 @@ class SoundtrackPlayer {
     const url = this.trackUrls[index % this.trackUrls.length];
     const el = new Audio(url);
     el.loop = false;
-    el.volume = 1;
+    el.volume = this.elementVolume;
     const source = this.ctx.createMediaElementSource(el);
     source.connect(this.destination);
     el.addEventListener("ended", () => {
       this.cleanupElement();
-      this.currentIndex = (index + 1) % this.trackUrls.length;
-      this.playTrack(this.currentIndex);
+      if (this.trackUrls.length > 1) {
+        this.currentIndex = (index + 1) % this.trackUrls.length;
+        this.playTrack(this.currentIndex);
+      }
     });
     el.play().catch(() => {
       this.currentIndex = (index + 1) % this.trackUrls.length;
     });
     this.currentElement = el;
     this.source = source;
+    this.currentTrackUrl = url;
   }
 
   private cleanupElement() {
@@ -75,6 +108,11 @@ class SoundtrackPlayer {
     }
     this.currentElement = undefined;
     this.source = undefined;
+    this.currentTrackUrl = undefined;
+  }
+
+  getCurrentTrackUrl() {
+    return this.currentTrackUrl;
   }
 }
 
@@ -92,6 +130,7 @@ class SoundManager {
     muteMusic: false,
   };
   private sfxCooldowns = new Map<SfxKey, number>();
+  private levelPlaylistStarted = false;
 
   resume() {
     const ctx = this.ensureContext();
@@ -100,6 +139,48 @@ class SoundManager {
       ctx.resume();
     }
     this.soundtrack?.resumeIfPaused();
+  }
+
+  private playExclusiveTrack(url?: string) {
+    const resolvedUrl =
+      url ??
+      FIRST_LEVEL_TRACK_URL ??
+      OTHER_LEVEL_TRACKS[0] ??
+      TITLE_TRACK_URL ??
+      ALL_TRACK_URLS[0];
+    if (!resolvedUrl) return;
+    this.resume();
+    if (!this.soundtrack) return;
+    if (this.soundtrack.getCurrentTrackUrl() === resolvedUrl) {
+      this.soundtrack.resumeIfPaused();
+      return;
+    }
+    this.soundtrack.playPlaylist([resolvedUrl], { shuffle: false, startIndex: 0 });
+    this.applyMusicVolume();
+  }
+
+  playTitleMusic() {
+    this.levelPlaylistStarted = false;
+    this.playExclusiveTrack(TITLE_TRACK_URL);
+  }
+
+  prepareRunMusic() {
+    this.levelPlaylistStarted = false;
+  }
+
+  playLevelTrack(waveNumber: number) {
+    if (waveNumber <= 1) {
+      this.levelPlaylistStarted = false;
+      this.playExclusiveTrack(FIRST_LEVEL_TRACK_URL);
+      return;
+    }
+    if (this.levelPlaylistStarted) return;
+    if (OTHER_LEVEL_TRACKS.length === 0) return;
+    this.resume();
+    if (!this.soundtrack) return;
+    this.levelPlaylistStarted = true;
+    this.soundtrack.playPlaylist([...OTHER_LEVEL_TRACKS], { shuffle: false, startIndex: 0 });
+    this.applyMusicVolume();
   }
 
   setSettings(settings: Pick<Settings, "masterVolume" | "musicVolume" | "sfxVolume" | "muteAll" | "muteMusic">) {
@@ -111,17 +192,26 @@ class SoundManager {
       muteMusic: settings.muteMusic,
     };
     this.applyVolumes();
+    this.applyMusicVolume();
+  }
+
+  startSoundtrack() {
+    this.resume();
+    this.ensureContext();
+    const hasActiveTrack = !!this.soundtrack?.getCurrentTrackUrl();
+    if (!hasActiveTrack) {
+      this.playTitleMusic();
+    } else {
+      this.applyMusicVolume();
+    }
+  }
+
+  private applyMusicVolume() {
     this.soundtrack?.setVolume(
       this.volumes.muteAll || this.volumes.muteMusic
         ? 0
         : this.volumes.masterVolume * this.volumes.musicVolume
     );
-  }
-
-  startSoundtrack() {
-    this.ensureContext();
-    this.soundtrack?.setTracks(SOUNDTRACK_URLS);
-    this.soundtrack?.play();
   }
 
   playSfx(key: SfxKey) {
@@ -224,7 +314,6 @@ class SoundManager {
       this.sfxGain = sfxGain;
       this.applyVolumes();
       this.soundtrack = new SoundtrackPlayer(ctx, musicGain);
-      this.soundtrack.setTracks(SOUNDTRACK_URLS);
     }
     return this.ctx;
   }

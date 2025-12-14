@@ -47,6 +47,12 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (screen === "title") {
+      soundManager.playTitleMusic();
+    }
+  }, [screen]);
+
+  useEffect(() => {
     let lastHoverButton: HTMLElement | null = null;
     const onPointerOver = (ev: PointerEvent) => {
       const target = (ev.target as HTMLElement | null)?.closest("button");

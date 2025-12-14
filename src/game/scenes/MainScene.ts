@@ -255,6 +255,7 @@ export class MainScene extends Phaser.Scene {
         gameEvents.emit(GAME_EVENT_KEYS.runStarted);
         this.runActive = true;
         this.runStartTime = this.time.now;
+        soundManager.prepareRunMusic();
         this.beginWaveIntermission(0);
     }
 
@@ -2799,6 +2800,7 @@ export class MainScene extends Phaser.Scene {
         this.intermissionRemainingMs = 3000;
         this.lastCountdownBroadcast = 3;
         useRunStore.getState().actions.setWaveCountdown(3, nextWaveIndex + 1);
+        soundManager.playLevelTrack(nextWaveIndex + 1);
     }
 
     private handleWaveIntermission(dt: number) {
