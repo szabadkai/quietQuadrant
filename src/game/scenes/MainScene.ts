@@ -174,6 +174,11 @@ export class MainScene extends Phaser.Scene {
     private enemies!: Phaser.Physics.Arcade.Group;
     private xpPickups!: Phaser.Physics.Arcade.Group;
     private lowGraphics = false;
+    private starfieldLayers: {
+        sprite: Phaser.GameObjects.TileSprite;
+        velocityX: number;
+        velocityY: number;
+    }[] = [];
 
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
@@ -304,9 +309,12 @@ export class MainScene extends Phaser.Scene {
     }
 
     update(_: number, delta: number) {
+        const dt = delta / 1000;
+        if (!this.lowGraphics) {
+            this.updateStarfield(dt);
+        }
         if (!this.runActive || !this.player) return;
         if (useRunStore.getState().status !== "running") return;
-        const dt = delta / 1000;
         this.elapsedAccumulator += dt;
         if (this.elapsedAccumulator >= 0.2) {
             useRunStore.getState().actions.tick(this.elapsedAccumulator);
@@ -400,6 +408,10 @@ export class MainScene extends Phaser.Scene {
     }
 
     private setupVisuals() {
+        this.lowGraphics = useMetaStore.getState().settings.lowGraphicsMode;
+        this.createStarfieldTextures();
+        this.createStarfieldLayers();
+        this.syncStarfieldVisibility();
         this.add
             .rectangle(
                 GAME_WIDTH / 2,
@@ -407,7 +419,7 @@ export class MainScene extends Phaser.Scene {
                 GAME_WIDTH - 16,
                 GAME_HEIGHT - 16,
                 0x0b0f13,
-                1
+                0.9
             )
             .setStrokeStyle(2, 0x1d2330);
         this.createTexture("player", (g) => {
@@ -534,6 +546,122 @@ export class MainScene extends Phaser.Scene {
         this.spawnPlayer();
     }
 
+    private createStarfieldTextures() {
+        const layers = [
+            {
+                key: "starfield-far",
+                size: 200,
+                count: 24,
+                color: 0x52657c,
+                alpha: [0.14, 0.32] as const,
+                radius: [0.9, 1.6] as const,
+            },
+            {
+                key: "starfield-mid",
+                size: 220,
+                count: 28,
+                color: 0x7bd3ff,
+                alpha: [0.2, 0.45] as const,
+                radius: [1, 2.2] as const,
+            },
+            {
+                key: "starfield-near",
+                size: 240,
+                count: 20,
+                color: 0xcde9ff,
+                alpha: [0.35, 0.75] as const,
+                radius: [1.4, 2.8] as const,
+            },
+        ];
+        layers.forEach((layer) => {
+            if (this.textures.exists(layer.key)) return;
+            const g = this.add.graphics({ x: 0, y: 0 });
+            for (let i = 0; i < layer.count; i++) {
+                const x = Phaser.Math.Between(0, layer.size);
+                const y = Phaser.Math.Between(0, layer.size);
+                const alpha = Phaser.Math.FloatBetween(
+                    layer.alpha[0],
+                    layer.alpha[1]
+                );
+                const radius = Phaser.Math.FloatBetween(
+                    layer.radius[0],
+                    layer.radius[1]
+                );
+                g.fillStyle(layer.color, alpha);
+                g.fillCircle(x, y, radius);
+                if (Math.random() < 0.25) {
+                    g.fillStyle(layer.color, alpha * 0.45);
+                    g.fillCircle(x, y, radius + 1.1);
+                }
+            }
+            g.generateTexture(layer.key, layer.size, layer.size);
+            g.destroy();
+        });
+    }
+
+    private createStarfieldLayers() {
+        this.starfieldLayers.forEach((layer) => layer.sprite.destroy());
+        this.starfieldLayers = [];
+        const defs = [
+            {
+                key: "starfield-far",
+                alpha: 0.3,
+                velocityX: -3,
+                velocityY: 6,
+                depth: -3,
+            },
+            {
+                key: "starfield-mid",
+                alpha: 0.42,
+                velocityX: -6,
+                velocityY: 14,
+                depth: -2.6,
+            },
+            {
+                key: "starfield-near",
+                alpha: 0.6,
+                velocityX: -10,
+                velocityY: 22,
+                depth: -2.2,
+                blendAdd: true,
+            },
+        ];
+        defs.forEach((def) => {
+            const sprite = this.add
+                .tileSprite(
+                    GAME_WIDTH / 2,
+                    GAME_HEIGHT / 2,
+                    GAME_WIDTH,
+                    GAME_HEIGHT,
+                    def.key
+                )
+                .setDepth(def.depth)
+                .setAlpha(def.alpha);
+            sprite.tilePositionX = Phaser.Math.Between(0, 200);
+            sprite.tilePositionY = Phaser.Math.Between(0, 200);
+            if (def.blendAdd) {
+                sprite.setBlendMode(Phaser.BlendModes.ADD);
+            }
+            this.starfieldLayers.push({
+                sprite,
+                velocityX: def.velocityX,
+                velocityY: def.velocityY,
+            });
+        });
+    }
+
+    private syncStarfieldVisibility() {
+        const visible = !this.lowGraphics;
+        this.starfieldLayers.forEach((layer) => layer.sprite.setVisible(visible));
+    }
+
+    private updateStarfield(dt: number) {
+        this.starfieldLayers.forEach((layer) => {
+            layer.sprite.tilePositionX += layer.velocityX * dt;
+            layer.sprite.tilePositionY += layer.velocityY * dt;
+        });
+    }
+
     private spawnPlayer() {
         this.player = this.physics.add
             .image(GAME_WIDTH / 2, GAME_HEIGHT / 2, "player")
@@ -658,6 +786,7 @@ export class MainScene extends Phaser.Scene {
     private resetState() {
         const settings = useMetaStore.getState().settings;
         this.lowGraphics = settings.lowGraphicsMode;
+        this.syncStarfieldVisibility();
         this.difficulty = 1;
         this.playerStats = {
             moveSpeed: 240,
@@ -2999,6 +3128,11 @@ export class MainScene extends Phaser.Scene {
 
     setLowGraphicsMode(enabled: boolean) {
         this.lowGraphics = enabled;
+        if (!enabled && this.starfieldLayers.length === 0) {
+            this.createStarfieldTextures();
+            this.createStarfieldLayers();
+        }
+        this.syncStarfieldVisibility();
     }
 
     // Dev helper: jump directly to a wave for testing.
