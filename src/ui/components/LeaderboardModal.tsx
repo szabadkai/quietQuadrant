@@ -4,6 +4,8 @@ import { useUIStore } from "../../state/useUIStore";
 import { useMetaStore } from "../../state/useMetaStore";
 import { SYNERGY_DEFINITIONS } from "../../config/synergies";
 import { UPGRADE_CATALOG } from "../../config/upgrades";
+import { useMenuNavigation } from "../input/useMenuNavigation";
+import { createRef } from "react";
 
 type LeaderboardTab = "weekly" | "all";
 
@@ -21,8 +23,6 @@ export const LeaderboardModal = () => {
   useEffect(() => {
     setSeasonInfo(gameManager.getSeasonInfo());
   }, []);
-
-  if (!open) return null;
 
   const weeklyBest = seasonInfo?.seedId ? bestRunsBySeed[seasonInfo.seedId] : undefined;
 
@@ -91,6 +91,40 @@ export const LeaderboardModal = () => {
       ? top10.filter((r) => r.seedId === seasonInfo?.seedId || r.runId.startsWith("empty-"))
       : top10;
 
+  const tabRefs = {
+    weekly: createRef<HTMLButtonElement>(),
+    all: createRef<HTMLButtonElement>(),
+  };
+  const rowRefs = rows.map(() => createRef<HTMLButtonElement>());
+
+  const nav = useMenuNavigation(
+    [
+      {
+        ref: tabRefs.weekly,
+        onActivate: () => setTab("weekly"),
+      },
+      {
+        ref: tabRefs.all,
+        onActivate: () => setTab("all"),
+      },
+      ...rows.map((run, idx) => ({
+        ref: rowRefs[idx],
+        disabled: run.wavesCleared === 0 && run.runId.startsWith("empty-"),
+        onActivate: () => {
+          const expanded = expandedRunId === run.runId;
+          setExpandedRunId(expanded ? null : run.runId);
+        },
+      })),
+    ],
+    {
+      enabled: open,
+      columns: 1,
+      onBack: () => closeLeaderboard(),
+    }
+  );
+
+  if (!open) return null;
+
   return (
     <div className="overlay leaderboard-overlay">
       <div className="panel leaderboard-panel">
@@ -111,10 +145,20 @@ export const LeaderboardModal = () => {
         {isHydrated && (
           <>
             <div className="tab-row">
-              <button className={`tab ${tab === "weekly" ? "active" : ""}`} onClick={() => setTab("weekly")}>
+              <button
+                ref={tabRefs.weekly}
+                tabIndex={0}
+                className={`tab ${tab === "weekly" ? "active" : ""} ${nav.focusedIndex === 0 ? "nav-focused" : ""}`}
+                onClick={() => setTab("weekly")}
+              >
                 Weekly
               </button>
-              <button className={`tab ${tab === "all" ? "active" : ""}`} onClick={() => setTab("all")}>
+              <button
+                ref={tabRefs.all}
+                tabIndex={0}
+                className={`tab ${tab === "all" ? "active" : ""} ${nav.focusedIndex === 1 ? "nav-focused" : ""}`}
+                onClick={() => setTab("all")}
+              >
                 All-Time
               </button>
             </div>
@@ -127,8 +171,10 @@ export const LeaderboardModal = () => {
                   return (
                     <div key={`${tab}-${run.runId}`} className={`leaderboard-row ${expanded ? "expanded" : ""}`}>
                       <button
-                        className="leaderboard-row-main"
+                        ref={rowRefs[idx]}
+                        className={`leaderboard-row-main ${nav.focusedIndex === idx + 2 ? "nav-focused" : ""}`}
                         disabled={isEmpty}
+                        tabIndex={0}
                         onClick={() => setExpandedRunId(expanded ? null : run.runId)}
                       >
                         <span className="pill">{idx + 1}</span>

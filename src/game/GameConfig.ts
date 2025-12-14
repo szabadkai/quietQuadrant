@@ -18,6 +18,9 @@ export const createGameConfig = (
         width: GAME_WIDTH,
         height: GAME_HEIGHT,
     },
+    input: {
+        gamepad: true,
+    },
     physics: {
         default: "arcade",
         arcade: {

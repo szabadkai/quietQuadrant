@@ -716,6 +716,12 @@ button.tiny {
   color: var(--vector-ink-soft);
 }
 
+.nav-focused {
+  outline: 2px solid var(--vector-ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 10px var(--vector-glow);
+}
+
 @media (max-width: 900px) {
   .hud-row {
     grid-template-columns: repeat(2, 1fr);

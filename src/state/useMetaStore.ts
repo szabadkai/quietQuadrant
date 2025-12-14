@@ -13,6 +13,7 @@ const defaultSettings: Settings = {
   muteMusic: false,
   lowGraphicsMode: false,
   difficultyMultiplier: 1,
+  inputMode: "keyboardMouse",
 };
 
 interface MetaState {

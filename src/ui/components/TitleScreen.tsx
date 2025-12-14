@@ -4,6 +4,8 @@ import { gameManager } from "../../game/GameManager";
 import { useMetaStore } from "../../state/useMetaStore";
 import { BOSSES } from "../../config/bosses";
 import { AFFIXES } from "../../config/affixes";
+import { useMenuNavigation } from "../input/useMenuNavigation";
+import { useRef } from "react";
 
 export const TitleScreen = () => {
   const { setScreen } = useUIStore((s) => s.actions);
@@ -23,6 +25,10 @@ export const TitleScreen = () => {
     gameManager.startRun(undefined, { randomSeed: true });
   };
 
+  const startTwin = () => {
+    gameManager.startRun(undefined, { mode: "twin" });
+  };
+
   const startInfinite = () => {
     gameManager.startRun(undefined, { mode: "infinite" });
   };
@@ -30,6 +36,23 @@ export const TitleScreen = () => {
   useEffect(() => {
     setSeasonInfo(gameManager.getSeasonInfo());
   }, []);
+
+  const weeklyRef = useRef<HTMLButtonElement>(null);
+  const randomRef = useRef<HTMLButtonElement>(null);
+  const twinRef = useRef<HTMLButtonElement>(null);
+  const infiniteRef = useRef<HTMLButtonElement>(null);
+  const howToRef = useRef<HTMLButtonElement>(null);
+
+  const nav = useMenuNavigation(
+    [
+      { ref: weeklyRef, onActivate: start },
+      { ref: randomRef, onActivate: startRandom },
+      { ref: twinRef, onActivate: startTwin },
+      { ref: infiniteRef, onActivate: startInfinite },
+      { ref: howToRef, onActivate: () => setScreen("howToPlay") },
+    ],
+    { enabled: true, columns: 1, onBack: undefined }
+  );
 
   return (
     <div className="overlay title-screen">
@@ -41,18 +64,51 @@ export const TitleScreen = () => {
           weave through escalating waves, and survive the bullet-hell boss.
         </p>
         <div className="actions">
-          <button className="primary" onClick={start}>
+          <button
+            ref={weeklyRef}
+            tabIndex={0}
+            className={`primary ${nav.focusedIndex === 0 ? "nav-focused" : ""}`}
+            onClick={start}
+          >
             Weekly Run
           </button>
-          <button className="ghost" onClick={startRandom}>
+          <button
+            ref={randomRef}
+            tabIndex={0}
+            className={`ghost ${nav.focusedIndex === 1 ? "nav-focused" : ""}`}
+            onClick={startRandom}
+          >
             Random Seed Run
           </button>
-          <button className="ghost" onClick={startInfinite}>
+          <button
+            ref={twinRef}
+            tabIndex={0}
+            className={`ghost ${nav.focusedIndex === 2 ? "nav-focused" : ""}`}
+            onClick={startTwin}
+          >
+            Twin Mode (Hotseat)
+          </button>
+          <button
+            ref={infiniteRef}
+            tabIndex={0}
+            className={`ghost ${nav.focusedIndex === 3 ? "nav-focused" : ""}`}
+            onClick={startInfinite}
+          >
             Infinite Mode
           </button>
-          <button className="ghost" onClick={() => setScreen("howToPlay")}>
+          <button
+            ref={howToRef}
+            tabIndex={0}
+            className={`ghost ${nav.focusedIndex === 4 ? "nav-focused" : ""}`}
+            onClick={() => setScreen("howToPlay")}
+          >
             How to Play
           </button>
+        </div>
+        <div className="note">
+          Twin Mode lets two players hotseat the same run and share upgrades; each wave spawns 50% more
+          enemies, but your shots deal 20% more damage to make up for the chaos. Plug in two controllers—right stick
+          auto-fires, and the last pad to move takes over (Back/View hands control off).
         </div>
         <div className="note">Infinite Mode keeps looping past wave 11 with fast-scaling enemies.</div>
         {seasonInfo && (

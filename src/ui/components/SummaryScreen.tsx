@@ -6,6 +6,8 @@ import { useMetaStore } from "../../state/useMetaStore";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
 import { SYNERGY_DEFINITIONS } from "../../config/synergies";
+import { useMenuNavigation } from "../input/useMenuNavigation";
+import { createRef } from "react";
 
 export const SummaryScreen = () => {
   const lastRun = useRunStore((s) => s.lastRunSummary);
@@ -29,11 +31,33 @@ export const SummaryScreen = () => {
     return `${minutes}:${seconds}`;
   }, [lastRun]);
 
+  const runAgainRef = createRef<HTMLButtonElement>();
+  const titleRef = createRef<HTMLButtonElement>();
+  const nav = useMenuNavigation(
+    [
+      {
+        ref: runAgainRef,
+        onActivate: () => {
+          if (lastRun) gameManager.startRun(undefined, { mode: lastRun.mode });
+        },
+        disabled: !lastRun,
+      },
+      { ref: titleRef, onActivate: () => setScreen("title"), disabled: !lastRun },
+    ],
+    { enabled: !!lastRun, columns: 2, onBack: () => setScreen("title") }
+  );
+
   if (!lastRun) return null;
 
   const seedBest = lastRun.seedId ? bestRunsBySeed[lastRun.seedId] : undefined;
   const modeLabel =
-    lastRun.mode === "infinite" ? "Infinite run" : lastRun.mode === "standard" ? "Standard run" : null;
+    lastRun.mode === "infinite"
+      ? "Infinite run"
+      : lastRun.mode === "twin"
+      ? "Twin run (shared upgrades)"
+      : lastRun.mode === "standard"
+      ? "Standard run"
+      : null;
 
   return (
     <div className={`overlay summary-screen ${isVictory ? "is-victory" : ""}`}>
@@ -101,12 +125,19 @@ export const SummaryScreen = () => {
         )}
         <div className="actions">
           <button
-            className="primary"
+            ref={runAgainRef}
+            tabIndex={0}
+            className={`primary ${nav.focusedIndex === 0 ? "nav-focused" : ""}`}
             onClick={() => gameManager.startRun(undefined, { mode: lastRun.mode })}
           >
             Run Again
           </button>
-          <button className="ghost" onClick={() => setScreen("title")}>
+          <button
+            ref={titleRef}
+            tabIndex={0}
+            className={`ghost ${nav.focusedIndex === 1 ? "nav-focused" : ""}`}
+            onClick={() => setScreen("title")}
+          >
             Title
           </button>
         </div>

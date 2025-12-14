@@ -7,6 +7,8 @@ import { useMetaStore } from "../../state/useMetaStore";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
 import { useEffect, useState } from "react";
+import { useMenuNavigation } from "../input/useMenuNavigation";
+import { createRef } from "react";
 
 export const PauseMenu = () => {
   const pauseOpen = useUIStore((s) => s.pauseMenuOpen);
@@ -30,6 +32,37 @@ export const PauseMenu = () => {
     []
   );
 
+  const resumeRef = createRef<HTMLButtonElement>();
+  const restartRef = createRef<HTMLButtonElement>();
+  const howToRef = createRef<HTMLButtonElement>();
+  const mainMenuRef = createRef<HTMLButtonElement>();
+  const sliderRefs = sliders.map(() => createRef<HTMLInputElement>());
+
+  const nav = useMenuNavigation(
+    [
+      { ref: resumeRef, onActivate: () => { closePause(); gameManager.resume(); } },
+      { ref: restartRef, onActivate: () => { closePause(); resetRun(); gameManager.startRun(); } },
+      { ref: howToRef, onActivate: () => { closePause(); resetRun(); setScreen("howToPlay"); } },
+      { ref: mainMenuRef, onActivate: () => { closePause(); resetRun(); setScreen("title"); } },
+      ...sliders.map((slider, idx) => ({
+        ref: sliderRefs[idx],
+        lockHorizontal: true,
+        onAdjust: (dir: -1 | 1) => {
+          const next = Math.min(slider.max, Math.max(slider.min, Number((settings[slider.key] + dir * slider.step).toFixed(2))));
+          updateSettings({ [slider.key]: next });
+        },
+      })),
+    ],
+    {
+      enabled: pauseOpen,
+      columns: 1,
+      onBack: () => {
+        closePause();
+        gameManager.resume();
+      },
+    }
+  );
+
   useEffect(() => {
     setSeasonInfo(gameManager.getSeasonInfo());
   }, []);
@@ -42,7 +75,9 @@ export const PauseMenu = () => {
         <div className="panel-header">Paused</div>
         <div className="actions">
           <button
-            className="primary"
+            ref={resumeRef}
+            tabIndex={0}
+            className={`primary ${nav.focusedIndex === 0 ? "nav-focused" : ""}`}
             onClick={() => {
               closePause();
               gameManager.resume();
@@ -51,6 +86,9 @@ export const PauseMenu = () => {
             Resume
           </button>
           <button
+            ref={restartRef}
+            tabIndex={0}
+            className={nav.focusedIndex === 1 ? "nav-focused" : ""}
             onClick={() => {
               closePause();
               resetRun();
@@ -60,6 +98,9 @@ export const PauseMenu = () => {
             Restart Run
           </button>
           <button
+            ref={howToRef}
+            tabIndex={0}
+            className={nav.focusedIndex === 2 ? "nav-focused" : ""}
             onClick={() => {
               closePause();
               resetRun();
@@ -69,7 +110,9 @@ export const PauseMenu = () => {
             How to Play
           </button>
           <button
-            className="ghost"
+            ref={mainMenuRef}
+            tabIndex={0}
+            className={`ghost ${nav.focusedIndex === 3 ? "nav-focused" : ""}`}
             onClick={() => {
               closePause();
               resetRun();
@@ -122,10 +165,12 @@ export const PauseMenu = () => {
         <div className="pause-settings">
           <div className="subheader">Settings</div>
           <div className="settings-grid">
-            {sliders.map((slider) => (
+            {sliders.map((slider, idx) => (
               <div key={slider.key} className="setting-row">
                 <div className="label">{slider.label}</div>
                 <input
+                  ref={sliderRefs[idx]}
+                  tabIndex={0}
                   type="range"
                   min={slider.min}
                   max={slider.max}
@@ -134,6 +179,7 @@ export const PauseMenu = () => {
                   onChange={(e) =>
                     updateSettings({ [slider.key]: Number(e.target.value) })
                   }
+                  className={nav.focusedIndex === 4 + idx ? "nav-focused" : ""}
                 />
                 <div className="tiny">
                   {slider.format?.(settings[slider.key]) ?? settings[slider.key]}
@@ -141,6 +187,9 @@ export const PauseMenu = () => {
               </div>
             ))}
           </div>
+        </div>
+        <div className="note">
+          Controller quick map: Left Stick move · Right Stick aims & auto-fires · LB/LT dash · Start pauses · Back/View swaps pilots in Twin Mode.
         </div>
       </div>
     </div>

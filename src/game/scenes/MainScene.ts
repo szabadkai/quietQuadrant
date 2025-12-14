@@ -22,6 +22,7 @@ import type {
 import { GAME_EVENT_KEYS, gameEvents } from "../events";
 import { BOSSES } from "../../config/bosses";
 import { Prng } from "../../utils/seed";
+import { GamepadAdapter, type GamepadControlState } from "../input/GamepadAdapter";
 
 const OBJECT_SCALE = 0.7;
 const COLOR_ACCENT = 0x9ff0ff;
@@ -221,6 +222,21 @@ export class MainScene extends Phaser.Scene {
     private bossCleared = false;
     private baseDifficulty = 1;
     private enemyHealthScale = 1;
+    private modeEnemyCountMultiplier = 1;
+    private enemyDamageTakenMultiplier = 1;
+    private inputMode: "keyboardMouse" | "controller" = "keyboardMouse";
+    private gamepadAdapter?: GamepadAdapter;
+    private gamepadState: GamepadControlState = {
+        hasGamepad: false,
+        usingGamepad: false,
+        move: new Phaser.Math.Vector2(0, 0),
+        aim: new Phaser.Math.Vector2(0, 0),
+        fireActive: false,
+        dashPressed: false,
+        pausePressed: false,
+        swapRequested: false,
+    };
+    private lastAimDirection = new Phaser.Math.Vector2(1, 0);
 
     constructor() {
         super("MainScene");
@@ -241,6 +257,7 @@ export class MainScene extends Phaser.Scene {
         );
         this.setupVisuals();
         this.setupInput();
+        this.gamepadAdapter = new GamepadAdapter(this);
         this.setupGroups();
         this.setupCollisions();
     }
@@ -335,18 +352,44 @@ export class MainScene extends Phaser.Scene {
             this.updateStarfield(dt);
         }
         if (!this.runActive || !this.player) return;
-        if (useRunStore.getState().status !== "running") return;
+        const runStatus = useRunStore.getState().status;
+
+        const gamepadState =
+            this.gamepadAdapter?.update() ??
+            this.gamepadState ??
+            ({
+                hasGamepad: false,
+                usingGamepad: false,
+                move: new Phaser.Math.Vector2(0, 0),
+                aim: new Phaser.Math.Vector2(0, 0),
+                fireActive: false,
+                dashPressed: false,
+                pausePressed: false,
+                swapRequested: false,
+            } as GamepadControlState);
+        this.gamepadState = gamepadState;
+        if (gamepadState.usingGamepad) {
+            this.setInputMode("controller");
+        } else if (this.isPointerDown()) {
+            this.setInputMode("keyboardMouse");
+        }
+        this.handleGamepadMetaInputs(gamepadState);
+        if (runStatus !== "running") return;
         this.elapsedAccumulator += dt;
         if (this.elapsedAccumulator >= 0.2) {
             useRunStore.getState().actions.tick(this.elapsedAccumulator);
             this.elapsedAccumulator = 0;
         }
 
-        this.handlePlayerMovement(dt);
+        this.handlePlayerMovement(dt, gamepadState);
         this.updateMomentum(dt);
-        this.updateChargeState(dt);
+        const fireHeld =
+            gamepadState.fireActive ||
+            this.input.activePointer?.isDown ||
+            this.input.mousePointer?.isDown;
+        this.updateChargeState(dt, fireHeld);
         this.tickShieldTimers();
-        this.handleShooting();
+        this.handleShooting(gamepadState);
         this.handleEnemies();
         this.handleHeatseekingProjectiles(dt);
         this.handleProjectileBounds();
@@ -1031,6 +1074,18 @@ export class MainScene extends Phaser.Scene {
     private resetState() {
         const settings = useMetaStore.getState().settings;
         this.lowGraphics = settings.lowGraphicsMode;
+        this.inputMode = "keyboardMouse";
+        this.lastAimDirection.set(1, 0);
+        this.gamepadState = {
+            hasGamepad: !!this.input.gamepad,
+            usingGamepad: false,
+            move: new Phaser.Math.Vector2(0, 0),
+            aim: new Phaser.Math.Vector2(0, 0),
+            fireActive: false,
+            dashPressed: false,
+            pausePressed: false,
+            swapRequested: false,
+        };
         this.syncStarfieldVisibility();
         this.backgroundFxTween?.stop();
         this.backgroundFxTween = undefined;
@@ -1045,6 +1100,8 @@ export class MainScene extends Phaser.Scene {
                 ? settings.difficultyMultiplier
                 : 1;
         this.difficulty = this.baseDifficulty;
+        this.modeEnemyCountMultiplier = this.runMode === "twin" ? 1.5 : 1;
+        this.enemyDamageTakenMultiplier = this.runMode === "twin" ? 1.2 : 1;
         this.enemyHealthScale = 1;
         this.bossCleared = false;
         this.playerStats = {
@@ -1193,14 +1250,21 @@ export class MainScene extends Phaser.Scene {
         }
     }
 
-    private handlePlayerMovement(_dt: number) {
+    private handlePlayerMovement(
+        _dt: number,
+        gamepadState: GamepadControlState
+    ) {
         if (!this.player) return;
         const body = this.player.body as Phaser.Physics.Arcade.Body;
         const dir = new Phaser.Math.Vector2(0, 0);
-        if (this.cursors.left?.isDown || this.wasd.A.isDown) dir.x -= 1;
-        if (this.cursors.right?.isDown || this.wasd.D.isDown) dir.x += 1;
-        if (this.cursors.up?.isDown || this.wasd.W.isDown) dir.y -= 1;
-        if (this.cursors.down?.isDown || this.wasd.S.isDown) dir.y += 1;
+        if (gamepadState.move.lengthSq() > 0) {
+            dir.copy(gamepadState.move);
+        } else {
+            if (this.cursors.left?.isDown || this.wasd.A.isDown) dir.x -= 1;
+            if (this.cursors.right?.isDown || this.wasd.D.isDown) dir.x += 1;
+            if (this.cursors.up?.isDown || this.wasd.W.isDown) dir.y -= 1;
+            if (this.cursors.down?.isDown || this.wasd.S.isDown) dir.y += 1;
+        }
 
         if (dir.lengthSq() > 0) {
             dir.normalize();
@@ -1218,15 +1282,19 @@ export class MainScene extends Phaser.Scene {
             : this.playerStats.moveSpeed;
         body.setMaxSpeed(speed);
 
-        if (Phaser.Input.Keyboard.JustDown(this.wasd.SHIFT)) {
+        if (
+            Phaser.Input.Keyboard.JustDown(this.wasd.SHIFT) ||
+            gamepadState.dashPressed
+        ) {
             this.tryDash(dir);
         }
 
+        const aimDir = this.getAimDirection(gamepadState);
         this.player.rotation = Phaser.Math.Angle.Between(
-            this.player.x,
-            this.player.y,
-            this.input.activePointer.worldX,
-            this.input.activePointer.worldY
+            0,
+            0,
+            aimDir.x,
+            aimDir.y
         );
 
         this.player.x = Phaser.Math.Clamp(
@@ -1241,11 +1309,61 @@ export class MainScene extends Phaser.Scene {
         );
     }
 
-    private updateChargeState(dt: number) {
+    private getAimDirection(gamepadState: GamepadControlState) {
+        if (!this.player) return this.lastAimDirection.clone();
+        if (gamepadState.aim.lengthSq() > 0) {
+            const aim = gamepadState.aim.clone().normalize();
+            this.lastAimDirection.copy(aim);
+            return aim;
+        }
+        const pointer = this.input.activePointer;
+        if (pointer) {
+            const aimVec = new Phaser.Math.Vector2(
+                pointer.worldX - this.player.x,
+                pointer.worldY - this.player.y
+            );
+            if (aimVec.lengthSq() > 0.0001) {
+                aimVec.normalize();
+                this.lastAimDirection.copy(aimVec);
+                return aimVec;
+            }
+        }
+        return this.lastAimDirection.clone();
+    }
+
+    private isPointerDown() {
+        return (
+            this.input.activePointer?.isDown === true ||
+            this.input.mousePointer?.isDown === true
+        );
+    }
+
+    private handleGamepadMetaInputs(gamepadState: GamepadControlState) {
+        if (!gamepadState.pausePressed) return;
+        const uiState = useUIStore.getState();
+        if (uiState.screen !== "inGame") return;
+        const uiActions = uiState.actions;
+        if (uiState.pauseMenuOpen) {
+            uiActions.closePause();
+            this.setPaused(false);
+        } else {
+            uiActions.openPause();
+            this.setPaused(true);
+        }
+    }
+
+    private setInputMode(mode: "keyboardMouse" | "controller") {
+        if (this.inputMode === mode) return;
+        this.inputMode = mode;
+        const meta = useMetaStore.getState();
+        if (meta.settings.inputMode !== mode) {
+            meta.actions.updateSettings({ inputMode: mode }).catch(() => {});
+        }
+    }
+
+    private updateChargeState(dt: number, fireHeld: boolean) {
         if (this.capacitorConfig.stacks === 0) return;
-        const pointerDown =
-            this.input.activePointer?.isDown || this.input.mousePointer?.isDown;
-        if (pointerDown) {
+        if (fireHeld) {
             this.chargeState.holdMs = Math.min(
                 this.capacitorConfig.idleMs,
                 this.chargeState.holdMs + dt * 1000
@@ -1318,17 +1436,15 @@ export class MainScene extends Phaser.Scene {
         );
     }
 
-    private handleShooting() {
+    private handleShooting(gamepadState: GamepadControlState) {
         if (!this.player) return;
-        const pointer = this.input.activePointer;
-        if (!pointer.isDown && !this.input.mousePointer?.isDown) return;
+        const pointerDown = this.isPointerDown();
+        const fireRequested = pointerDown || gamepadState.fireActive;
+        if (!fireRequested) return;
 
         const useChargeMode = this.capacitorConfig.stacks > 0;
         const isCharged = useChargeMode && this.chargeState.ready;
-        const dir = new Phaser.Math.Vector2(
-            pointer.worldX - this.player.x,
-            pointer.worldY - this.player.y
-        ).normalize();
+        const dir = this.getAimDirection(gamepadState);
         const spreadCount = this.playerStats.projectiles;
         const spreadStepDeg = this.spreadConfig.spreadDegrees;
         soundManager.playSfx("shoot");
@@ -2241,6 +2357,7 @@ export class MainScene extends Phaser.Scene {
                 resolvedDamage *= this.playerStats.critMultiplier;
             }
         }
+        resolvedDamage *= this.enemyDamageTakenMultiplier;
 
         enemy.setData("lastHitTags", tags);
         enemy.setData("lastHitCharged", charged);
@@ -3113,7 +3230,9 @@ export class MainScene extends Phaser.Scene {
         const healthScale =
             this.baseDifficulty *
             (overflow > 0 ? Math.pow(1.18, overflow) : 1);
-        const countScale = overflow > 0 ? 1 + overflow * 0.35 : 1;
+        const countScale =
+            (overflow > 0 ? 1 + overflow * 0.35 : 1) *
+            this.modeEnemyCountMultiplier;
         return { speedAndFire, healthScale, countScale };
     }
 

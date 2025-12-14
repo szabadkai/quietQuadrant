@@ -2,7 +2,9 @@ export type Rarity = "common" | "rare" | "legendary";
 
 export type UpgradeTuning = Record<string, number>;
 
-export type RunMode = "standard" | "infinite";
+export type RunMode = "standard" | "infinite" | "twin";
+
+export type InputMode = "keyboardMouse" | "controller";
 
 export interface UpgradeDefinition {
   id: string;
@@ -53,6 +55,7 @@ export interface Settings {
   muteMusic: boolean;
   lowGraphicsMode: boolean;
   difficultyMultiplier: number;
+  inputMode: InputMode;
 }
 
 export type EnemyKind = "drifter" | "watcher" | "mass" | "boss";
