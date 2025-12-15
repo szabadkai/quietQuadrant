@@ -7,114 +7,114 @@ export type RunMode = "standard" | "infinite" | "twin";
 export type InputMode = "keyboardMouse" | "controller";
 
 export type ControlBinding =
-  | { type: "keyboardMouse"; label?: string }
-  | { type: "gamepad"; id?: string; index?: number; label?: string };
+	| { type: "keyboardMouse"; label?: string }
+	| { type: "gamepad"; id?: string; index?: number; label?: string };
 
 export type TwinControlConfig = {
-  p1: ControlBinding;
-  p2: ControlBinding;
+	p1: ControlBinding;
+	p2: ControlBinding;
 };
 
 export interface UpgradeDefinition {
-  id: string;
-  name: string;
-  description: string;
-  rarity: Rarity;
-  maxStacks?: number;
-  category: "offense" | "defense" | "utility";
-  tags?: string[];
-  synergy?: string;
-  tuning?: UpgradeTuning;
-  stackingNotes?: string;
-  dropWeight?: number;
+	id: string;
+	name: string;
+	description: string;
+	rarity: Rarity;
+	maxStacks?: number;
+	category: "offense" | "defense" | "utility";
+	tags?: string[];
+	synergy?: string;
+	tuning?: UpgradeTuning;
+	stackingNotes?: string;
+	dropWeight?: number;
 }
 
 export interface SynergyDefinition {
-  id: string;
-  name: string;
-  description: string;
-  requires: string[];
+	id: string;
+	name: string;
+	description: string;
+	requires: string[];
 }
 
 export interface UpgradeInstance {
-  id: string;
-  stacks: number;
+	id: string;
+	stacks: number;
 }
 
 export interface RunSummary {
-  runId: string;
-  timestamp: number;
-  durationSeconds: number;
-  wavesCleared: number;
-  bossDefeated: boolean;
-  enemiesDestroyed: number;
-  upgrades: UpgradeInstance[];
-  seedId: string;
-  bossId?: string;
-  affixId?: string;
-  synergies?: string[];
-  mode?: RunMode;
+	runId: string;
+	timestamp: number;
+	durationSeconds: number;
+	wavesCleared: number;
+	bossDefeated: boolean;
+	enemiesDestroyed: number;
+	upgrades: UpgradeInstance[];
+	seedId: string;
+	bossId?: string;
+	affixId?: string;
+	synergies?: string[];
+	mode?: RunMode;
 }
 
 export interface Settings {
-  masterVolume: number;
-  musicVolume: number;
-  sfxVolume: number;
-  muteAll: boolean;
-  muteMusic: boolean;
-  lowGraphicsMode: boolean;
-  difficultyMultiplier: number;
-  inputMode: InputMode;
+	masterVolume: number;
+	musicVolume: number;
+	sfxVolume: number;
+	muteAll: boolean;
+	muteMusic: boolean;
+	lowGraphicsMode: boolean;
+	difficultyMultiplier: number;
+	inputMode: InputMode;
 }
 
 export type EnemyKind = "drifter" | "watcher" | "mass" | "boss";
 
 export interface EnemyDefinition {
-  kind: EnemyKind;
-  speed: number;
-  health: number;
-  damage: number;
-  fireCooldown?: number;
-  projectileSpeed?: number;
-  elite?: boolean;
+	kind: EnemyKind;
+	speed: number;
+	health: number;
+	damage: number;
+	fireCooldown?: number;
+	projectileSpeed?: number;
+	elite?: boolean;
 }
 
 export interface WaveDefinition {
-  id: string;
-  enemies: EnemySpawn[];
+	id: string;
+	enemies: EnemySpawn[];
 }
 
 export interface EnemySpawn {
-  kind: EnemyKind;
-  count: number;
-  elite?: boolean;
+	kind: EnemyKind;
+	count: number;
+	elite?: boolean;
 }
 
 export interface UpgradeOption {
-  definition: UpgradeDefinition;
-  stacks: number;
+	definition: UpgradeDefinition;
+	stacks: number;
 }
 
 export interface BossDefinition {
-  id: string;
-  name: string;
-  description: string;
-  tuning: {
-    healthMultiplier?: number;
-    speedMultiplier?: number;
-    fireRateMultiplier?: number;
-    projectileSpeedMultiplier?: number;
-  };
-  patterns: string[];
+	id: string;
+	name: string;
+	description: string;
+	tuning: {
+		healthMultiplier?: number;
+		speedMultiplier?: number;
+		fireRateMultiplier?: number;
+		projectileSpeedMultiplier?: number;
+	};
+	patterns: string[];
 }
 
 export interface WeeklyAffix {
-  id: string;
-  name: string;
-  description: string;
-  enemyHealthMultiplier?: number;
-  enemySpeedMultiplier?: number;
-  rareUpgradeBonus?: number;
+	id: string;
+	name: string;
+	description: string;
+	enemyHealthMultiplier?: number;
+	enemySpeedMultiplier?: number;
+	rareUpgradeBonus?: number;
 }
 
 export type PerSeedBest = Record<string, RunSummary>;

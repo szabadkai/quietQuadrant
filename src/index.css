@@ -1,41 +1,45 @@
 :root {
-  --vector-bg: #010308;
-  --vector-ink: #78f3ff;
-  --vector-ink-soft: #3fbdd0;
-  --vector-ink-strong: #b9fdff;
-  --vector-panel: rgba(3, 8, 14, 0.92);
-  --vector-line: rgba(120, 243, 255, 0.5);
-  --vector-glow: rgba(120, 243, 255, 0.2);
-  font-family: "Share Tech Mono", "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono",
-    Menlo, monospace;
-  line-height: 1.5;
-  font-weight: 400;
-  color: var(--vector-ink-strong);
-  background-color: var(--vector-bg);
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  letter-spacing: 0.03em;
+	--vector-bg: #010308;
+	--vector-ink: #78f3ff;
+	--vector-ink-soft: #3fbdd0;
+	--vector-ink-strong: #b9fdff;
+	--vector-panel: rgba(3, 8, 14, 0.92);
+	--vector-line: rgba(120, 243, 255, 0.5);
+	--vector-glow: rgba(120, 243, 255, 0.2);
+	font-family:
+		"Share Tech Mono", "IBM Plex Mono", "SFMono-Regular", Consolas,
+		"Liberation Mono", Menlo, monospace;
+	line-height: 1.5;
+	font-weight: 400;
+	color: var(--vector-ink-strong);
+	background-color: var(--vector-bg);
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+	letter-spacing: 0.03em;
 }
 
 * {
-  box-sizing: border-box;
+	box-sizing: border-box;
 }
 
 body {
-  margin: 0;
-  min-height: 100vh;
-  background:
-    radial-gradient(circle at 50% 36%, rgba(120, 243, 255, 0.06), transparent 34%),
-    repeating-linear-gradient(
-      180deg,
-      rgba(120, 243, 255, 0.05),
-      rgba(120, 243, 255, 0.05) 1px,
-      transparent 1px,
-      transparent 4px
-    ),
-    var(--vector-bg);
+	margin: 0;
+	min-height: 100vh;
+	background:
+		radial-gradient(
+			circle at 50% 36%,
+			rgba(120, 243, 255, 0.06),
+			transparent 34%
+		),
+		repeating-linear-gradient(
+			180deg,
+			rgba(120, 243, 255, 0.05),
+			rgba(120, 243, 255, 0.05) 1px,
+			transparent 1px,
+			transparent 4px
+		), var(--vector-bg);
 }
 
 button {
-  font-family: inherit;
+	font-family: inherit;
 }
