@@ -8,15 +8,15 @@ import {
     UPGRADE_CATALOG,
     UPGRADE_RARITY_ODDS,
 } from "../../config/upgrades";
-import { 
-    canStackUpgrade, 
+import {
+    canStackUpgrade,
     validateUpgradeCombinationDetailed,
     calculateDiminishedMultiplier,
     applySynergyAdjustment,
     getLegendaryAdjustments,
     calculateMaxDamageMultiplier,
     calculateMaxDPSMultiplier,
-    calculateMaxDefenseMultiplier
+    calculateMaxDefenseMultiplier,
 } from "../../config/upgradeBalance";
 import { WAVES } from "../../config/waves";
 import type {
@@ -268,7 +268,7 @@ export class MainScene extends Phaser.Scene {
     private inputMode: "keyboardMouse" | "controller" = "keyboardMouse";
     private gamepadAdapter?: GamepadAdapter;
     private gamepadAdapterP2?: GamepadAdapter;
-    
+
     // Visual effect tracking for proper cleanup
     private activeSpawnCues: Phaser.GameObjects.Arc[] = [];
     private activeSpawnTweens: Phaser.Tweens.Tween[] = [];
@@ -431,7 +431,7 @@ export class MainScene extends Phaser.Scene {
         if (this.elapsedAccumulator >= 0.2) {
             useRunStore.getState().actions.tick(this.elapsedAccumulator);
             this.elapsedAccumulator = 0;
-            
+
             // Periodic upgrade validation check (Requirements 4.4, 4.5, 1.5)
             // Run every 0.2 seconds to catch any edge cases
             if (Object.keys(this.upgradeStacks).length > 0) {
@@ -474,41 +474,45 @@ export class MainScene extends Phaser.Scene {
         const def = getUpgradeDefinition(id);
         if (!def) return;
         const current = this.upgradeStacks[id] ?? 0;
-        
+
         // Check balance system stacking limits (Requirements 4.1, 4.4)
         if (!canStackUpgrade(id, current)) return;
         if (def.maxStacks && current >= def.maxStacks) return;
-        
+
         // Enhanced validation with detailed feedback (Requirements 4.4, 4.5, 1.5)
         const testUpgrades = { ...this.upgradeStacks, [id]: current + 1 };
         const validation = validateUpgradeCombinationDetailed(testUpgrades);
-        
+
         if (!validation.valid) {
             // Log validation failure for debugging
             console.warn(`Upgrade ${id} rejected:`, validation.reasons);
-            console.warn('Power metrics:', validation.metrics);
-            
+            console.warn("Power metrics:", validation.metrics);
+
             // Upgrade would exceed balance limits, reject it
             return;
         }
-        
+
         // Additional safeguards against infinite damage builds (Requirement 1.5)
         if (validation.metrics.maxDPS > 15.0) {
             // Even if technically valid, reject extremely high DPS combinations
-            console.warn(`Upgrade ${id} rejected: DPS too high (${validation.metrics.maxDPS.toFixed(2)}x)`);
+            console.warn(
+                `Upgrade ${id} rejected: DPS too high (${validation.metrics.maxDPS.toFixed(
+                    2
+                )}x)`
+            );
             return;
         }
-        
+
         this.upgradeStacks[id] = current + 1;
         this.pendingUpgradeOptions = [];
         useUIStore.getState().actions.closeUpgradeSelection();
         this.setPaused(false);
         this.applyUpgradeEffects(def);
         this.checkSynergies();
-        
+
         // Validate upgrade state after application (Requirements 4.4, 4.5)
         this.validateCurrentUpgradeState();
-        
+
         useRunStore.getState().actions.addUpgrade({
             id: def.id,
             stacks: this.upgradeStacks[id],
@@ -535,22 +539,37 @@ export class MainScene extends Phaser.Scene {
                 // Apply synergy power adjustments (Requirement 4.3)
                 const baseCritChance = 0.05;
                 const baseCritMultiplier = 0.25;
-                this.playerStats.critChance += applySynergyAdjustment("railgun", baseCritChance);
-                this.playerStats.critMultiplier += applySynergyAdjustment("railgun", baseCritMultiplier);
+                this.playerStats.critChance += applySynergyAdjustment(
+                    "railgun",
+                    baseCritChance
+                );
+                this.playerStats.critMultiplier += applySynergyAdjustment(
+                    "railgun",
+                    baseCritMultiplier
+                );
                 break;
             }
             case "meat-grinder": {
                 // Apply synergy power adjustments (Requirement 4.3)
                 const baseCritChance = 0.03;
                 const baseCritMultiplier = 0.15;
-                this.playerStats.critChance += applySynergyAdjustment("meat-grinder", baseCritChance);
-                this.playerStats.critMultiplier += applySynergyAdjustment("meat-grinder", baseCritMultiplier);
+                this.playerStats.critChance += applySynergyAdjustment(
+                    "meat-grinder",
+                    baseCritChance
+                );
+                this.playerStats.critMultiplier += applySynergyAdjustment(
+                    "meat-grinder",
+                    baseCritMultiplier
+                );
                 break;
             }
             case "vampire": {
                 // Apply synergy power adjustments (Requirement 4.3)
                 const baseCritChance = 0.03;
-                this.playerStats.critChance += applySynergyAdjustment("vampire", baseCritChance);
+                this.playerStats.critChance += applySynergyAdjustment(
+                    "vampire",
+                    baseCritChance
+                );
                 break;
             }
             default:
@@ -558,7 +577,7 @@ export class MainScene extends Phaser.Scene {
         }
         // Validate upgrade state after synergy activation (Requirements 4.3, 4.4)
         this.validateCurrentUpgradeState();
-        
+
         useRunStore.getState().actions.unlockSynergy(id);
         const anchor =
             this.playerState?.sprite ?? this.playerTwoState?.sprite ?? null;
@@ -703,7 +722,7 @@ export class MainScene extends Phaser.Scene {
             g.fillStyle(0xf4f6fb, 0.9);
             g.fillTriangle(c - 1, c - 4, c + 3, c, c - 1, c + 4);
         });
-        
+
         // Create enhanced elite enemy textures (Requirements 6.1, 6.3, 6.5)
         this.createTexture("elite-drifter", (g) => {
             const c = 32;
@@ -722,7 +741,7 @@ export class MainScene extends Phaser.Scene {
             g.fillRect(c - 22, c - 2, 8, 10);
             g.fillRect(c + 14, c - 2, 8, 10);
         });
-        
+
         this.createTexture("elite-watcher", (g) => {
             const c = 32;
             // Enhanced watcher with more aggressive appearance
@@ -740,7 +759,7 @@ export class MainScene extends Phaser.Scene {
             g.fillStyle(0xff9966, 0.9);
             g.fillCircle(c + 3, c - 2, 3); // Brighter glint
         });
-        
+
         this.createTexture("elite-mass", (g) => {
             const c = 32;
             // Enhanced mass with spikier, more threatening appearance
@@ -1604,7 +1623,7 @@ export class MainScene extends Phaser.Scene {
 
         // Clean up visual effects before clearing pools
         this.cleanupVisualEffects();
-        
+
         this.enemies.clear(true, true);
         this.bullets.clear(true, true);
         this.enemyBullets.clear(true, true);
@@ -2196,6 +2215,7 @@ export class MainScene extends Phaser.Scene {
             .circle(x, y, radius, color, 0.08)
             .setStrokeStyle(2, color, strokeOpacity)
             .setDepth(0.5);
+        circle.setData("isBurstVisual", true);
         this.tweens.add({
             targets: circle,
             alpha: { from: 0.8, to: 0 },
@@ -2280,12 +2300,18 @@ export class MainScene extends Phaser.Scene {
 
             // Handle elite behaviors
             const isElite = enemy.getData("elite") as boolean;
-            const eliteBehaviors = enemy.getData("eliteBehaviors") as string[] || [];
-            
+            const eliteBehaviors =
+                (enemy.getData("eliteBehaviors") as string[]) || [];
+
             if (kind === "drifter") {
                 // Check for burst movement behavior
-                if (isElite && eliteBehaviors.includes('burst_movement')) {
-                    this.handleBurstMovement(enemy, targetVec, speed, slowFactor);
+                if (isElite && eliteBehaviors.includes("burst_movement")) {
+                    this.handleBurstMovement(
+                        enemy,
+                        targetVec,
+                        speed,
+                        slowFactor
+                    );
                 } else {
                     enemy.setVelocity(
                         targetVec.x * speed * slowFactor,
@@ -2306,10 +2332,13 @@ export class MainScene extends Phaser.Scene {
                 } else {
                     enemy.setVelocity(0, 0);
                 }
-                
+
                 // Handle rapid fire behavior for elite watchers
-                if (isElite && eliteBehaviors.includes('rapid_fire')) {
-                    this.tryEliteRapidFire(enemy, new Phaser.Math.Vector2(pilot.sprite.x, pilot.sprite.y));
+                if (isElite && eliteBehaviors.includes("rapid_fire")) {
+                    this.tryEliteRapidFire(
+                        enemy,
+                        new Phaser.Math.Vector2(pilot.sprite.x, pilot.sprite.y)
+                    );
                 } else {
                     this.tryEnemyShot(
                         enemy,
@@ -2318,8 +2347,13 @@ export class MainScene extends Phaser.Scene {
                 }
             } else if (kind === "mass") {
                 // Check for burst movement behavior
-                if (isElite && eliteBehaviors.includes('burst_movement')) {
-                    this.handleBurstMovement(enemy, targetVec, speed * 0.7, slowFactor);
+                if (isElite && eliteBehaviors.includes("burst_movement")) {
+                    this.handleBurstMovement(
+                        enemy,
+                        targetVec,
+                        speed * 0.7,
+                        slowFactor
+                    );
                 } else {
                     enemy.setVelocity(
                         targetVec.x * speed * 0.7 * slowFactor,
@@ -2334,9 +2368,11 @@ export class MainScene extends Phaser.Scene {
             } else if (kind === "boss") {
                 this.updateBossMovement(enemy);
             }
-            
+
             // Update elite glow position to follow enemy
-            const eliteGlow = enemy.getData("eliteGlow") as Phaser.GameObjects.Arc | undefined;
+            const eliteGlow = enemy.getData("eliteGlow") as
+                | Phaser.GameObjects.Arc
+                | undefined;
             if (eliteGlow) {
                 eliteGlow.setPosition(enemy.x, enemy.y);
             }
@@ -2344,22 +2380,22 @@ export class MainScene extends Phaser.Scene {
     }
 
     private handleBurstMovement(
-        enemy: Phaser.Physics.Arcade.Image, 
-        targetVec: Phaser.Math.Vector2, 
-        speed: number, 
+        enemy: Phaser.Physics.Arcade.Image,
+        targetVec: Phaser.Math.Vector2,
+        speed: number,
         slowFactor: number
     ) {
         // Elite burst movement: quick dashes toward player with pauses
-        const burstCooldown = enemy.getData("burstCooldown") as number || 0;
-        const burstActive = enemy.getData("burstActive") as boolean || false;
-        const burstEndTime = enemy.getData("burstEndTime") as number || 0;
-        
+        const burstCooldown = (enemy.getData("burstCooldown") as number) || 0;
+        const burstActive = (enemy.getData("burstActive") as boolean) || false;
+        const burstEndTime = (enemy.getData("burstEndTime") as number) || 0;
+
         if (this.time.now > burstCooldown && !burstActive) {
             // Start burst
             enemy.setData("burstActive", true);
             enemy.setData("burstEndTime", this.time.now + 300); // 300ms burst
             enemy.setData("burstCooldown", this.time.now + 1500); // 1.5s cooldown
-            
+
             // Enhanced burst speed for elites
             enemy.setVelocity(
                 targetVec.x * speed * 2.5 * slowFactor,
@@ -2378,24 +2414,25 @@ export class MainScene extends Phaser.Scene {
         }
     }
 
-    private tryEliteRapidFire(enemy: Phaser.Physics.Arcade.Image, target: Phaser.Math.Vector2) {
+    private tryEliteRapidFire(
+        enemy: Phaser.Physics.Arcade.Image,
+        target: Phaser.Math.Vector2
+    ) {
         // Elite rapid fire: faster shooting rate
         const fireCooldown = (enemy.getData("fireCooldown") as number) * 0.5; // 50% faster
         const nextFire = enemy.getData("nextFire") as number;
         if (this.time.now < nextFire) return;
-        
+
         enemy.setData("nextFire", this.time.now + fireCooldown * 1000);
-        
-        const dir = new Phaser.Math.Vector2(target.x - enemy.x, target.y - enemy.y);
-        dir.normalize();
-        
-        const projSpeed = enemy.getData("projectileSpeed") as number;
-        this.spawnEnemyBullet(
-            enemy.x,
-            enemy.y,
-            dir,
-            projSpeed
+
+        const dir = new Phaser.Math.Vector2(
+            target.x - enemy.x,
+            target.y - enemy.y
         );
+        dir.normalize();
+
+        const projSpeed = enemy.getData("projectileSpeed") as number;
+        this.spawnEnemyBullet(enemy.x, enemy.y, dir, projSpeed);
     }
 
     private handleDeathExplosion(enemy: Phaser.Physics.Arcade.Image) {
@@ -2403,28 +2440,33 @@ export class MainScene extends Phaser.Scene {
         const x = enemy.x;
         const y = enemy.y;
         const explosionRadius = 80;
-        const explosionDamage = enemy.getData("damage") as number || 25;
-        
+        const explosionDamage = (enemy.getData("damage") as number) || 25;
+
         // Create visual explosion effect
         if (!this.lowGraphics) {
             this.spawnBurstVisual(x, y, explosionRadius, 0xff4444, 1.0);
         }
-        
+
         // Apply damage to nearby players
         const pilots = this.getActivePilots();
-        pilots.forEach(pilot => {
+        pilots.forEach((pilot) => {
             const dx = pilot.sprite.x - x;
             const dy = pilot.sprite.y - y;
             const distance = Math.sqrt(dx * dx + dy * dy);
-            
+
             if (distance <= explosionRadius) {
-                this.handlePlayerDamage(pilot, enemy, explosionDamage * 0.5, false);
+                this.handlePlayerDamage(
+                    pilot,
+                    enemy,
+                    explosionDamage * 0.5,
+                    false
+                );
             }
         });
-        
+
         // Screen shake for dramatic effect
         this.cameras.main.shake(300, 0.008);
-        
+
         // Play elite explosion sound (Requirement 6.2)
         soundManager.playSfx("eliteExplosion");
     }
@@ -2666,8 +2708,9 @@ export class MainScene extends Phaser.Scene {
         const gapStart = this.randFloat(0, Math.PI * 2);
         const baseGapWidth = Math.PI / 9;
         // Reduce gap width in later phases for increased difficulty
-        const gapWidth = baseGapWidth * Math.max(0.5, 1.0 - (this.bossPhase - 1) * 0.25);
-        
+        const gapWidth =
+            baseGapWidth * Math.max(0.5, 1.0 - (this.bossPhase - 1) * 0.25);
+
         for (let i = 0; i < total; i++) {
             const angle = (Math.PI * 2 * i) / total;
             const diff = Math.abs(
@@ -2685,7 +2728,8 @@ export class MainScene extends Phaser.Scene {
                 this.getBossProjectileSpeed(280)
             );
         }
-        this.bossNextPatternAt = this.time.now + this.getBossPatternCooldown(1100);
+        this.bossNextPatternAt =
+            this.time.now + this.getBossPatternCooldown(1100);
         this.tryBossPatternOverlap();
     }
 
@@ -2700,14 +2744,15 @@ export class MainScene extends Phaser.Scene {
         )
             .subtract(center)
             .normalize();
-        
+
         // Increase burst size and reduce spread in later phases
         const baseSpread = Phaser.Math.DegToRad(8);
-        const spread = baseSpread * Math.max(0.6, 1.0 - (this.bossPhase - 1) * 0.2);
+        const spread =
+            baseSpread * Math.max(0.6, 1.0 - (this.bossPhase - 1) * 0.2);
         const baseBullets = 7; // -3 to +3
         const bulletCount = this.getBossBulletDensity(baseBullets);
         const halfCount = Math.floor(bulletCount / 2);
-        
+
         for (let i = -halfCount; i <= halfCount; i++) {
             const dir = target.clone().rotate(spread * i);
             this.spawnEnemyBullet(
@@ -2717,7 +2762,8 @@ export class MainScene extends Phaser.Scene {
                 this.getBossProjectileSpeed(300)
             );
         }
-        this.bossNextPatternAt = this.time.now + this.getBossPatternCooldown(950);
+        this.bossNextPatternAt =
+            this.time.now + this.getBossPatternCooldown(950);
         this.tryBossPatternOverlap();
     }
 
@@ -2728,7 +2774,7 @@ export class MainScene extends Phaser.Scene {
         const baseSpinRate = Phaser.Math.DegToRad(22);
         const spinRate = baseSpinRate * (1.0 + (this.bossPhase - 1) * 0.5);
         this.bossSpinAngle += spinRate;
-        
+
         const baseBeams = 14;
         const total = this.getBossBulletDensity(baseBeams);
         for (let i = 0; i < total; i++) {
@@ -2744,7 +2790,8 @@ export class MainScene extends Phaser.Scene {
                 this.getBossProjectileSpeed(250)
             );
         }
-        this.bossNextPatternAt = this.time.now + this.getBossPatternCooldown(780);
+        this.bossNextPatternAt =
+            this.time.now + this.getBossPatternCooldown(780);
         this.tryBossPatternOverlap();
     }
 
@@ -2752,15 +2799,26 @@ export class MainScene extends Phaser.Scene {
         // Increase minion count and elite chance in later phases
         const phaseMultiplier = 1.0 + (this.bossPhase - 1) * 0.3;
         const eliteChance = Math.min(0.7, 0.35 + (this.bossPhase - 1) * 0.175);
-        
+
         const choices: EnemySpawn[] = [
-            { kind: "drifter", count: Math.floor(this.randBetween(3, 4) * phaseMultiplier) },
-            { kind: "watcher", count: Math.floor(this.randBetween(1, 2) * phaseMultiplier) },
-            { kind: "mass", count: Math.max(1, Math.floor(1 * phaseMultiplier)), elite: this.rng.next() < eliteChance },
+            {
+                kind: "drifter",
+                count: Math.floor(this.randBetween(3, 4) * phaseMultiplier),
+            },
+            {
+                kind: "watcher",
+                count: Math.floor(this.randBetween(1, 2) * phaseMultiplier),
+            },
+            {
+                kind: "mass",
+                count: Math.max(1, Math.floor(1 * phaseMultiplier)),
+                elite: this.rng.next() < eliteChance,
+            },
         ];
         const pick = this.randChoice(choices);
         this.spawnWaveEnemies([pick]);
-        this.bossNextPatternAt = this.time.now + this.getBossPatternCooldown(1400);
+        this.bossNextPatternAt =
+            this.time.now + this.getBossPatternCooldown(1400);
         this.tryBossPatternOverlap();
     }
 
@@ -2775,14 +2833,15 @@ export class MainScene extends Phaser.Scene {
         )
             .subtract(center)
             .normalize();
-        
+
         // Tighter cone with more bullets in later phases
         const baseSpread = Phaser.Math.DegToRad(6);
-        const spread = baseSpread * Math.max(0.7, 1.0 - (this.bossPhase - 1) * 0.15);
+        const spread =
+            baseSpread * Math.max(0.7, 1.0 - (this.bossPhase - 1) * 0.15);
         const baseBullets = 9; // -4 to +4
         const bulletCount = this.getBossBulletDensity(baseBullets);
         const halfCount = Math.floor(bulletCount / 2);
-        
+
         for (let i = -halfCount; i <= halfCount; i++) {
             const dir = target.clone().rotate(spread * i);
             this.spawnEnemyBullet(
@@ -2792,21 +2851,23 @@ export class MainScene extends Phaser.Scene {
                 this.getBossProjectileSpeed(300)
             );
         }
-        this.bossNextPatternAt = this.time.now + this.getBossPatternCooldown(1100);
+        this.bossNextPatternAt =
+            this.time.now + this.getBossPatternCooldown(1100);
         this.tryBossPatternOverlap();
     }
 
     private bossPatternPulseRing() {
         if (!this.boss) return;
         const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-        
+
         // More rings and faster timing in later phases
         const baseRings = 16;
         const ringBullets = this.getBossBulletDensity(baseRings);
         const ringCount = Math.min(4, 2 + (this.bossPhase - 1)); // 2, 3, 4 rings
         const baseDelay = 200;
-        const delay = baseDelay * Math.max(0.5, 1.0 - (this.bossPhase - 1) * 0.25);
-        
+        const delay =
+            baseDelay * Math.max(0.5, 1.0 - (this.bossPhase - 1) * 0.25);
+
         const fireRing = (offset: number, speed: number) => {
             for (let i = 0; i < ringBullets; i++) {
                 const angle = offset + (Math.PI * 2 * i) / ringBullets;
@@ -2822,17 +2883,18 @@ export class MainScene extends Phaser.Scene {
                 );
             }
         };
-        
+
         // Fire multiple rings with increasing speed
         for (let ring = 0; ring < ringCount; ring++) {
             const ringDelay = ring * delay;
-            const ringSpeed = 240 + (ring * 40); // Increasing speed per ring
+            const ringSpeed = 240 + ring * 40; // Increasing speed per ring
             this.time.delayedCall(ringDelay, () =>
                 fireRing(this.randFloat(0, Math.PI * 2), ringSpeed)
             );
         }
-        
-        this.bossNextPatternAt = this.time.now + this.getBossPatternCooldown(1200);
+
+        this.bossNextPatternAt =
+            this.time.now + this.getBossPatternCooldown(1200);
         this.tryBossPatternOverlap();
     }
 
@@ -2847,16 +2909,22 @@ export class MainScene extends Phaser.Scene {
         )
             .subtract(center)
             .normalize();
-        
+
         // More projectiles and tighter spread in later phases
         const baseBullets = 3;
         const bulletCount = this.getBossBulletDensity(baseBullets);
         const baseSpread = 0.12;
-        const spread = baseSpread * Math.max(0.8, 1.0 - (this.bossPhase - 1) * 0.1);
-        
+        const spread =
+            baseSpread * Math.max(0.8, 1.0 - (this.bossPhase - 1) * 0.1);
+
         // Fire center bullet
-        this.spawnEnemyBullet(center.x, center.y, toward, this.getBossProjectileSpeed(360));
-        
+        this.spawnEnemyBullet(
+            center.x,
+            center.y,
+            toward,
+            this.getBossProjectileSpeed(360)
+        );
+
         // Fire side bullets
         for (let i = 1; i < bulletCount; i++) {
             const angle = (i % 2 === 0 ? 1 : -1) * spread * Math.ceil(i / 2);
@@ -2867,8 +2935,9 @@ export class MainScene extends Phaser.Scene {
                 this.getBossProjectileSpeed(320)
             );
         }
-        
-        this.bossNextPatternAt = this.time.now + this.getBossPatternCooldown(1100);
+
+        this.bossNextPatternAt =
+            this.time.now + this.getBossPatternCooldown(1100);
         this.tryBossPatternOverlap();
     }
 
@@ -2877,13 +2946,15 @@ export class MainScene extends Phaser.Scene {
         const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
         const baseShards = 16;
         const shardCount = this.getBossBulletDensity(baseShards);
-        
+
         // Increased randomness and speed in later phases
         const baseRandomness = 0.05;
         const randomness = baseRandomness * (1.0 + (this.bossPhase - 1) * 0.5);
-        
+
         for (let i = 0; i < shardCount; i++) {
-            const angle = (Math.PI * 2 * i) / shardCount + this.randFloat(-randomness, randomness);
+            const angle =
+                (Math.PI * 2 * i) / shardCount +
+                this.randFloat(-randomness, randomness);
             const dir = new Phaser.Math.Vector2(
                 Math.cos(angle),
                 Math.sin(angle)
@@ -2895,7 +2966,8 @@ export class MainScene extends Phaser.Scene {
                 this.getBossProjectileSpeed(300)
             );
         }
-        this.bossNextPatternAt = this.time.now + this.getBossPatternCooldown(900);
+        this.bossNextPatternAt =
+            this.time.now + this.getBossPatternCooldown(900);
         this.tryBossPatternOverlap();
     }
 
@@ -2914,11 +2986,11 @@ export class MainScene extends Phaser.Scene {
             new Phaser.Math.Vector2(1, -1).normalize(),
             new Phaser.Math.Vector2(-1, -1).normalize(),
         ];
-        
+
         // Fire multiple waves of beams in later phases
         const waveCount = Math.min(3, 1 + (this.bossPhase - 1)); // 1, 2, 3 waves
         const waveDelay = 150 * Math.max(0.6, 1.0 - (this.bossPhase - 1) * 0.2);
-        
+
         for (let wave = 0; wave < waveCount; wave++) {
             this.time.delayedCall(wave * waveDelay, () => {
                 [...dirs, ...diagonals].forEach((dir) => {
@@ -2931,8 +3003,9 @@ export class MainScene extends Phaser.Scene {
                 });
             });
         }
-        
-        this.bossNextPatternAt = this.time.now + this.getBossPatternCooldown(850);
+
+        this.bossNextPatternAt =
+            this.time.now + this.getBossPatternCooldown(850);
         this.tryBossPatternOverlap();
     }
 
@@ -2940,7 +3013,10 @@ export class MainScene extends Phaser.Scene {
 
     private getBossPatternCooldown(baseCooldown: number): number {
         // Faster transitions and more aggressive patterns (Requirements 2.2, 2.4)
-        const phaseSpeedMultiplier = Math.max(0.4, 1.0 - (this.bossPhase - 1) * 0.3); // 1.0x, 0.7x, 0.4x
+        const phaseSpeedMultiplier = Math.max(
+            0.4,
+            1.0 - (this.bossPhase - 1) * 0.3
+        ); // 1.0x, 0.7x, 0.4x
         const difficultyMultiplier = 1.0 / this.difficulty;
         return baseCooldown * phaseSpeedMultiplier * difficultyMultiplier;
     }
@@ -2966,11 +3042,11 @@ export class MainScene extends Phaser.Scene {
     private tryBossPatternOverlap() {
         // Implement pattern overlapping for enhanced difficulty (Requirement 2.3)
         if (!this.shouldTriggerOverlappingPattern()) return;
-        
+
         // Fire a secondary pattern with reduced intensity
         const secondaryPatterns = ["ring-with-gap", "aimed-burst"];
         const pattern = this.randChoice(secondaryPatterns);
-        
+
         // Delay the secondary pattern slightly
         this.time.delayedCall(200, () => {
             switch (pattern) {
@@ -3001,8 +3077,6 @@ export class MainScene extends Phaser.Scene {
         this.spawnEnemyBullet(enemy.x, enemy.y, dir, speed, heavy);
         enemy.setData("nextFire", this.time.now + fireCooldown * 1000);
     }
-
-
 
     private spawnEnemyBullet(
         x: number,
@@ -3408,25 +3482,28 @@ export class MainScene extends Phaser.Scene {
         if (wasCritKill) {
             this.spawnCritShrapnel(enemy);
         }
-        
+
         // Handle elite death explosion behavior
         const isElite = enemy.getData("elite") as boolean;
-        const eliteBehaviors = enemy.getData("eliteBehaviors") as string[] || [];
-        if (isElite && eliteBehaviors.includes('death_explosion')) {
+        const eliteBehaviors =
+            (enemy.getData("eliteBehaviors") as string[]) || [];
+        if (isElite && eliteBehaviors.includes("death_explosion")) {
             this.handleDeathExplosion(enemy);
         }
         const fromVolatile = killerTags?.includes("volatile");
         if (!fromVolatile) {
             this.triggerChainReaction(x, y, kind, maxHealth, enemy);
         }
-        
+
         // Cleanup elite glow effects before destroying enemy
-        const eliteGlow = enemy.getData("eliteGlow") as Phaser.GameObjects.Arc | undefined;
+        const eliteGlow = enemy.getData("eliteGlow") as
+            | Phaser.GameObjects.Arc
+            | undefined;
         if (eliteGlow) {
             this.tweens.killTweensOf(eliteGlow);
             eliteGlow.destroy();
         }
-        
+
         enemy.destroy();
         useRunStore.getState().actions.recordKill();
         this.dropXp(x, y, kind);
@@ -3617,7 +3694,7 @@ export class MainScene extends Phaser.Scene {
             maxDPS: calculateMaxDPSMultiplier(this.upgradeStacks),
             maxDefense: calculateMaxDefenseMultiplier(this.upgradeStacks),
             upgradeStacks: { ...this.upgradeStacks },
-            activeSynergies: Array.from(this.activeSynergies)
+            activeSynergies: Array.from(this.activeSynergies),
         };
     }
 
@@ -3626,27 +3703,47 @@ export class MainScene extends Phaser.Scene {
      * Requirements 4.4, 4.5
      */
     private validateCurrentUpgradeState(): boolean {
-        const validation = validateUpgradeCombinationDetailed(this.upgradeStacks);
-        
+        const validation = validateUpgradeCombinationDetailed(
+            this.upgradeStacks
+        );
+
         if (!validation.valid) {
-            console.error('Invalid upgrade state detected:', validation.reasons);
-            console.error('Current metrics:', validation.metrics);
+            console.error(
+                "Invalid upgrade state detected:",
+                validation.reasons
+            );
+            console.error("Current metrics:", validation.metrics);
             return false;
         }
-        
+
         // Warn if approaching limits (80% of thresholds)
-        if (validation.metrics.maxDamage > 6.4) { // 80% of 8.0 limit
-            console.warn(`Damage approaching limit: ${validation.metrics.maxDamage.toFixed(2)}x / 8.0x`);
+        if (validation.metrics.maxDamage > 6.4) {
+            // 80% of 8.0 limit
+            console.warn(
+                `Damage approaching limit: ${validation.metrics.maxDamage.toFixed(
+                    2
+                )}x / 8.0x`
+            );
         }
-        
-        if (validation.metrics.maxDPS > 16.0) { // 80% of 20.0 limit
-            console.warn(`DPS approaching limit: ${validation.metrics.maxDPS.toFixed(2)}x / 20.0x`);
+
+        if (validation.metrics.maxDPS > 16.0) {
+            // 80% of 20.0 limit
+            console.warn(
+                `DPS approaching limit: ${validation.metrics.maxDPS.toFixed(
+                    2
+                )}x / 20.0x`
+            );
         }
-        
-        if (validation.metrics.maxDefense > 0.4) { // 80% of 0.5 limit
-            console.warn(`Defense approaching limit: ${(validation.metrics.maxDefense * 100).toFixed(1)}% / 50%`);
+
+        if (validation.metrics.maxDefense > 0.4) {
+            // 80% of 0.5 limit
+            console.warn(
+                `Defense approaching limit: ${(
+                    validation.metrics.maxDefense * 100
+                ).toFixed(1)}% / 50%`
+            );
         }
-        
+
         return true;
     }
 
@@ -3657,25 +3754,36 @@ export class MainScene extends Phaser.Scene {
      */
     private emergencyUpgradeValidation(): void {
         const metrics = this.getCurrentUpgradePowerMetrics();
-        
+
         // Hard caps to prevent game-breaking scenarios
         if (metrics.maxDamage > 10.0) {
-            console.error('Emergency: Damage multiplier exceeded safe limits, capping at 10x');
+            console.error(
+                "Emergency: Damage multiplier exceeded safe limits, capping at 10x"
+            );
             // In a real scenario, we might need to adjust player stats or disable upgrades
             // For now, we log the issue
         }
-        
+
         if (metrics.maxDPS > 25.0) {
-            console.error('Emergency: DPS multiplier exceeded safe limits, capping at 25x');
+            console.error(
+                "Emergency: DPS multiplier exceeded safe limits, capping at 25x"
+            );
         }
-        
+
         if (metrics.maxDefense > 0.6) {
-            console.error('Emergency: Defense exceeded safe limits, capping at 60%');
+            console.error(
+                "Emergency: Defense exceeded safe limits, capping at 60%"
+            );
         }
-        
+
         // Validate that Glass Cannon health cap is properly enforced
-        if (this.upgradeStacks['glass-cannon'] > 0 && this.playerStats.maxHealth > 1) {
-            console.error('Emergency: Glass Cannon health cap not properly enforced');
+        if (
+            this.upgradeStacks["glass-cannon"] > 0 &&
+            this.playerStats.maxHealth > 1
+        ) {
+            console.error(
+                "Emergency: Glass Cannon health cap not properly enforced"
+            );
             this.playerStats.maxHealth = 1;
             this.playerStats.health = Math.min(this.playerStats.health, 1);
         }
@@ -3744,10 +3852,22 @@ export class MainScene extends Phaser.Scene {
             case "power-shot": {
                 // Apply diminishing returns for power shot stacking (Requirement 4.1)
                 const stacks = this.upgradeStacks[def.id];
-                const effectiveMultiplier = calculateDiminishedMultiplier("power-shot", stacks, 1.15);
-                const previousMultiplier = stacks > 1 ? calculateDiminishedMultiplier("power-shot", stacks - 1, 1.15) : 1;
-                const incrementalMultiplier = effectiveMultiplier / previousMultiplier;
-                
+                const effectiveMultiplier = calculateDiminishedMultiplier(
+                    "power-shot",
+                    stacks,
+                    1.15
+                );
+                const previousMultiplier =
+                    stacks > 1
+                        ? calculateDiminishedMultiplier(
+                              "power-shot",
+                              stacks - 1,
+                              1.15
+                          )
+                        : 1;
+                const incrementalMultiplier =
+                    effectiveMultiplier / previousMultiplier;
+
                 this.playerStats.damage *= incrementalMultiplier;
                 this.playerStats.critChance += 0.05;
                 break;
@@ -3755,10 +3875,22 @@ export class MainScene extends Phaser.Scene {
             case "rapid-fire": {
                 // Apply diminishing returns for rapid fire stacking (Requirement 4.1)
                 const stacks = this.upgradeStacks[def.id];
-                const effectiveMultiplier = calculateDiminishedMultiplier("rapid-fire", stacks, 1.15);
-                const previousMultiplier = stacks > 1 ? calculateDiminishedMultiplier("rapid-fire", stacks - 1, 1.15) : 1;
-                const incrementalMultiplier = effectiveMultiplier / previousMultiplier;
-                
+                const effectiveMultiplier = calculateDiminishedMultiplier(
+                    "rapid-fire",
+                    stacks,
+                    1.15
+                );
+                const previousMultiplier =
+                    stacks > 1
+                        ? calculateDiminishedMultiplier(
+                              "rapid-fire",
+                              stacks - 1,
+                              1.15
+                          )
+                        : 1;
+                const incrementalMultiplier =
+                    effectiveMultiplier / previousMultiplier;
+
                 this.playerStats.fireRate *= incrementalMultiplier;
                 break;
             }
@@ -3777,7 +3909,7 @@ export class MainScene extends Phaser.Scene {
                     this.playerStats.maxHealth,
                     this.playerStats.health + 1
                 );
-                
+
                 // Apply diminishing returns for defensive upgrades (Requirement 4.5)
                 // Calculate effective damage reduction with diminishing returns
                 let effectiveDamageReduction = 0;
@@ -3790,9 +3922,15 @@ export class MainScene extends Phaser.Scene {
                         effectiveDamageReduction += baseReduction * 0.8;
                     }
                 }
-                effectiveDamageReduction = Math.min(effectiveDamageReduction, 0.5); // Cap at 50%
-                
-                this.platingConfig = { stacks, damageReduction: effectiveDamageReduction };
+                effectiveDamageReduction = Math.min(
+                    effectiveDamageReduction,
+                    0.5
+                ); // Cap at 50%
+
+                this.platingConfig = {
+                    stacks,
+                    damageReduction: effectiveDamageReduction,
+                };
                 this.enforceHealthCap();
                 useRunStore
                     .getState()
@@ -3813,10 +3951,22 @@ export class MainScene extends Phaser.Scene {
             case "heavy-barrel": {
                 // Apply diminishing returns for heavy barrel stacking (Requirement 4.1)
                 const stacks = this.upgradeStacks[def.id];
-                const effectiveMultiplier = calculateDiminishedMultiplier("heavy-barrel", stacks, 1.2);
-                const previousMultiplier = stacks > 1 ? calculateDiminishedMultiplier("heavy-barrel", stacks - 1, 1.2) : 1;
-                const incrementalMultiplier = effectiveMultiplier / previousMultiplier;
-                
+                const effectiveMultiplier = calculateDiminishedMultiplier(
+                    "heavy-barrel",
+                    stacks,
+                    1.2
+                );
+                const previousMultiplier =
+                    stacks > 1
+                        ? calculateDiminishedMultiplier(
+                              "heavy-barrel",
+                              stacks - 1,
+                              1.2
+                          )
+                        : 1;
+                const incrementalMultiplier =
+                    effectiveMultiplier / previousMultiplier;
+
                 this.playerStats.damage *= incrementalMultiplier;
                 this.playerStats.fireRate *= 0.9;
                 this.projectileScale *= 1.1;
@@ -3997,7 +4147,8 @@ export class MainScene extends Phaser.Scene {
                 const adjustments = getLegendaryAdjustments("glass-cannon");
                 this.glassCannonCap = 1;
                 this.playerStats.damage *= adjustments.damageMultiplier || 2.5;
-                this.playerStats.critChance += adjustments.critChanceBonus || 0.08;
+                this.playerStats.critChance +=
+                    adjustments.critChanceBonus || 0.08;
                 this.playerStats.maxHealth = Math.min(
                     this.playerStats.maxHealth,
                     1
@@ -4025,9 +4176,10 @@ export class MainScene extends Phaser.Scene {
             case "bullet-hell": {
                 // Apply legendary upgrade adjustments (Requirement 4.2)
                 const adjustments = getLegendaryAdjustments("bullet-hell");
-                const fireRateMultiplier = adjustments.fireRateMultiplier || 3.0;
+                const fireRateMultiplier =
+                    adjustments.fireRateMultiplier || 3.0;
                 const damageMultiplier = adjustments.damageMultiplier || 0.7;
-                
+
                 this.bulletHellConfig = {
                     active: true,
                     fireRateMultiplier,
@@ -4116,17 +4268,17 @@ export class MainScene extends Phaser.Scene {
     private computeWaveScaling(index: number) {
         // Enhanced wave scaling to account for typical upgrade progression
         // Requirements 1.2, 1.3, 5.1, 5.2, 5.3, 5.4, 5.5
-        
+
         const overflow =
             this.infiniteMode && index >= WAVES.length
                 ? index - (WAVES.length - 1)
                 : 0;
-        
+
         // Progressive scaling for standard waves (0-9) to challenge upgrade builds
         let baseHealthMultiplier = 1;
         let baseSpeedMultiplier = 1;
         let baseCountMultiplier = 1;
-        
+
         if (index < WAVES.length) {
             // Early waves (0-2): Minimal scaling to allow power spike enjoyment
             if (index <= 2) {
@@ -4149,16 +4301,21 @@ export class MainScene extends Phaser.Scene {
                 baseCountMultiplier = 1.2 + lateProgress * 0.3; // 1.2 to 1.5
             }
         }
-        
+
         // Apply base difficulty and infinite mode overflow scaling
-        const speedAndFire = this.baseDifficulty * baseSpeedMultiplier * 
+        const speedAndFire =
+            this.baseDifficulty *
+            baseSpeedMultiplier *
             (overflow > 0 ? 1 + overflow * 0.25 : 1);
-        const healthScale = this.baseDifficulty * baseHealthMultiplier * 
+        const healthScale =
+            this.baseDifficulty *
+            baseHealthMultiplier *
             (overflow > 0 ? 1.2 ** overflow : 1);
-        const countScale = baseCountMultiplier * 
+        const countScale =
+            baseCountMultiplier *
             (overflow > 0 ? 1 + overflow * 0.4 : 1) *
             this.modeEnemyCountMultiplier;
-            
+
         return { speedAndFire, healthScale, countScale };
     }
 
@@ -4252,16 +4409,26 @@ export class MainScene extends Phaser.Scene {
         // Use elite textures for enhanced visual distinction (Requirements 6.1, 6.5)
         let textureKey: string;
         if (elite) {
-            textureKey = kind === "drifter" ? "elite-drifter" 
-                       : kind === "watcher" ? "elite-watcher" 
-                       : "elite-mass";
+            textureKey =
+                kind === "drifter"
+                    ? "elite-drifter"
+                    : kind === "watcher"
+                    ? "elite-watcher"
+                    : "elite-mass";
         } else {
-            textureKey = kind === "drifter" ? "drifter"
-                       : kind === "watcher" ? "watcher"
-                       : "mass";
+            textureKey =
+                kind === "drifter"
+                    ? "drifter"
+                    : kind === "watcher"
+                    ? "watcher"
+                    : "mass";
         }
-        
-        const enemy = this.enemies.get(0, 0, textureKey) as Phaser.Physics.Arcade.Image;
+
+        const enemy = this.enemies.get(
+            0,
+            0,
+            textureKey
+        ) as Phaser.Physics.Arcade.Image;
         if (!enemy) return;
         enemy.setActive(true);
         enemy.setVisible(false);
@@ -4289,22 +4456,25 @@ export class MainScene extends Phaser.Scene {
         enemy.setData("damage", stats.damage);
         enemy.setData("elite", elite || false);
         enemy.setData("eliteBehaviors", stats.eliteBehaviors || []);
-        
+
         // Enhanced visual threat indicators for high-stat enemies (Requirements 6.3, 6.5)
-        const healthRatio = maxHealth / getEnemyDefinition(kind as any, false).health;
-        const speedRatio = (stats.speed * this.difficulty * enemySpeedMult) / getEnemyDefinition(kind as any, false).speed;
-        
+        const healthRatio =
+            maxHealth / getEnemyDefinition(kind as any, false).health;
+        const speedRatio =
+            (stats.speed * this.difficulty * enemySpeedMult) /
+            getEnemyDefinition(kind as any, false).speed;
+
         // Add threat indicator for significantly enhanced enemies
         if (healthRatio > 1.5 || speedRatio > 1.5 || elite) {
             enemy.setData("threatLevel", elite ? "elite" : "enhanced");
-            
+
             // Add subtle size increase for enhanced enemies
             if (!elite && (healthRatio > 1.5 || speedRatio > 1.5)) {
                 enemy.setScale(OBJECT_SCALE * 1.1);
                 enemy.setTint(0xffaa77); // Subtle orange tint for enhanced non-elites
             }
         }
-        
+
         const enemyBody = enemy.body as Phaser.Physics.Arcade.Body;
         enemyBody.setSize(enemy.displayWidth, enemy.displayHeight, true);
         enemyBody.setBounce(0.4, 0.4);
@@ -4313,23 +4483,26 @@ export class MainScene extends Phaser.Scene {
         if (elite) {
             // Enhanced elite visual distinction (Requirements 6.1, 6.3, 6.5)
             enemy.setTint(0xff6b47); // Bright orange-red tint for threat indication
-            
+
             // Add pulsing glow effect for elite enemies
             if (!this.lowGraphics) {
-                const glowRing = this.add.arc(
-                    enemy.x, 
-                    enemy.y, 
-                    32 * OBJECT_SCALE, 
-                    0, 
-                    360, 
-                    false, 
-                    0xff6b47, 
-                    0.15
-                ).setStrokeStyle(2, 0xff6b47, 0.6).setDepth(0.3);
-                
+                const glowRing = this.add
+                    .arc(
+                        enemy.x,
+                        enemy.y,
+                        32 * OBJECT_SCALE,
+                        0,
+                        360,
+                        false,
+                        0xff6b47,
+                        0.15
+                    )
+                    .setStrokeStyle(2, 0xff6b47, 0.6)
+                    .setDepth(0.3);
+
                 // Store glow ring reference on enemy for cleanup
                 enemy.setData("eliteGlow", glowRing);
-                
+
                 // Pulsing animation for elite glow
                 this.tweens.add({
                     targets: glowRing,
@@ -4338,7 +4511,7 @@ export class MainScene extends Phaser.Scene {
                     duration: 800,
                     yoyo: true,
                     repeat: -1,
-                    ease: 'Sine.easeInOut'
+                    ease: "Sine.easeInOut",
                 });
             }
         } else {
@@ -4539,72 +4712,115 @@ export class MainScene extends Phaser.Scene {
             yoyo: true,
             repeat: 2,
         });
-        
+
         // Track visual effects for cleanup
         this.activeSpawnCues.push(cue);
         this.activeSpawnTweens.push(flash);
-        
+
         // Store spawn data in case enemy is destroyed during delay
         const spawnData = {
             x: enemy.x,
             y: enemy.y,
             kind: enemy.getData("kind") as string,
-            elite: enemy.getData("elite") as boolean
+            elite: enemy.getData("elite") as boolean,
         };
-        
+
         const delayedCall = this.time.delayedCall(1500, () => {
             // Clean up tracking arrays
             const cueIndex = this.activeSpawnCues.indexOf(cue);
             if (cueIndex >= 0) this.activeSpawnCues.splice(cueIndex, 1);
-            
+
             const tweenIndex = this.activeSpawnTweens.indexOf(flash);
             if (tweenIndex >= 0) this.activeSpawnTweens.splice(tweenIndex, 1);
-            
+
             const callIndex = this.activeDelayedCalls.indexOf(delayedCall);
             if (callIndex >= 0) this.activeDelayedCalls.splice(callIndex, 1);
-            
+
             cue.destroy();
             flash.stop();
-            
+
             // If enemy was destroyed during spawn delay, create a new one
             if (!enemy.active) {
-                const newEnemy = this.enemies.get(spawnData.x, spawnData.y, 
-                    spawnData.elite ? `elite-${spawnData.kind}` : spawnData.kind) as Phaser.Physics.Arcade.Image;
+                const newEnemy = this.enemies.get(
+                    spawnData.x,
+                    spawnData.y,
+                    spawnData.elite ? `elite-${spawnData.kind}` : spawnData.kind
+                ) as Phaser.Physics.Arcade.Image;
                 if (newEnemy) {
                     // Restore enemy data from spawn data
-                    const stats = getEnemyDefinition(spawnData.kind as any, spawnData.elite);
-                    const enemyHealthMult = this.affix?.enemyHealthMultiplier ?? 1;
-                    const enemySpeedMult = this.affix?.enemySpeedMultiplier ?? 1;
-                    const maxHealth = stats.health * enemyHealthMult * this.enemyHealthScale;
-                    
+                    const stats = getEnemyDefinition(
+                        spawnData.kind as any,
+                        spawnData.elite
+                    );
+                    const enemyHealthMult =
+                        this.affix?.enemyHealthMultiplier ?? 1;
+                    const enemySpeedMult =
+                        this.affix?.enemySpeedMultiplier ?? 1;
+                    const maxHealth =
+                        stats.health * enemyHealthMult * this.enemyHealthScale;
+
                     newEnemy.setActive(true);
                     newEnemy.setVisible(true);
                     newEnemy.setScale(OBJECT_SCALE);
                     newEnemy.setData("kind", spawnData.kind);
                     newEnemy.setData("health", maxHealth);
                     newEnemy.setData("maxHealth", maxHealth);
-                    newEnemy.setData("speed", stats.speed * this.difficulty * enemySpeedMult);
-                    newEnemy.setData("fireCooldown", stats.fireCooldown ? stats.fireCooldown / this.difficulty : 0);
-                    newEnemy.setData("projectileSpeed", stats.projectileSpeed ? stats.projectileSpeed * this.difficulty : 0);
-                    newEnemy.setData("nextFire", this.time.now + this.randBetween(400, 1200));
+                    newEnemy.setData(
+                        "speed",
+                        stats.speed * this.difficulty * enemySpeedMult
+                    );
+                    newEnemy.setData(
+                        "fireCooldown",
+                        stats.fireCooldown
+                            ? stats.fireCooldown / this.difficulty
+                            : 0
+                    );
+                    newEnemy.setData(
+                        "projectileSpeed",
+                        stats.projectileSpeed
+                            ? stats.projectileSpeed * this.difficulty
+                            : 0
+                    );
+                    newEnemy.setData(
+                        "nextFire",
+                        this.time.now + this.randBetween(400, 1200)
+                    );
                     newEnemy.setData("damage", stats.damage);
                     newEnemy.setData("elite", spawnData.elite || false);
-                    newEnemy.setData("eliteBehaviors", stats.eliteBehaviors || []);
-                    
-                    const enemyBody = newEnemy.body as Phaser.Physics.Arcade.Body;
-                    enemyBody.setSize(newEnemy.displayWidth, newEnemy.displayHeight, true);
+                    newEnemy.setData(
+                        "eliteBehaviors",
+                        stats.eliteBehaviors || []
+                    );
+
+                    const enemyBody =
+                        newEnemy.body as Phaser.Physics.Arcade.Body;
+                    enemyBody.setSize(
+                        newEnemy.displayWidth,
+                        newEnemy.displayHeight,
+                        true
+                    );
                     enemyBody.setBounce(0.4, 0.4);
                     enemyBody.enable = true;
                     newEnemy.setVelocity(0, 0);
-                    
+
                     // Apply elite visual effects
                     if (spawnData.elite) {
                         newEnemy.setTint(0xff6b47);
                         if (!this.lowGraphics) {
-                            const glowRing = this.add.arc(
-                                newEnemy.x, newEnemy.y, 32 * OBJECT_SCALE, 0, 360, false, 0xff6b47, 0.15
-                            ).setStrokeStyle(2, 0xff6b47, 0.6).setDepth(0.3);
-                            
+                            const glowRing = this.add
+                                .arc(
+                                    newEnemy.x,
+                                    newEnemy.y,
+                                    32 * OBJECT_SCALE,
+                                    0,
+                                    360,
+                                    false,
+                                    0xff6b47,
+                                    0.15
+                                )
+                                .setStrokeStyle(2, 0xff6b47, 0.6)
+                                .setDepth(0.3);
+
                             newEnemy.setData("eliteGlow", glowRing);
                             this.tweens.add({
                                 targets: glowRing,
@@ -4613,7 +4829,7 @@ export class MainScene extends Phaser.Scene {
                                 duration: 800,
                                 yoyo: true,
                                 repeat: -1,
-                                ease: 'Sine.easeInOut'
+                                ease: "Sine.easeInOut",
                             });
                         }
                         soundManager.playSfx("eliteSpawn");
@@ -4621,7 +4837,7 @@ export class MainScene extends Phaser.Scene {
                 }
                 return;
             }
-            
+
             const body = enemy.body as Phaser.Physics.Arcade.Body | null;
             if (!body) {
                 enemy.destroy();
@@ -4631,60 +4847,79 @@ export class MainScene extends Phaser.Scene {
             enemy.setVisible(true);
             body.enable = true;
             enemy.setVelocity(0, 0);
-            
+
             // Play elite spawn sound for enhanced enemies (Requirement 6.2)
             const isElite = enemy.getData("elite") as boolean;
             if (isElite) {
                 soundManager.playSfx("eliteSpawn");
             }
         });
-        
+
         // Track the delayed call for cleanup
         this.activeDelayedCalls.push(delayedCall);
     }
 
     private cleanupVisualEffects() {
+        // Stop all tweens first to prevent orphaned animations
+        this.tweens.killAll();
+
         // Clean up spawn cues
-        this.activeSpawnCues.forEach(cue => {
+        this.activeSpawnCues.forEach((cue) => {
             if (cue && cue.active) {
                 cue.destroy();
             }
         });
         this.activeSpawnCues.length = 0;
-        
+
         // Stop and clean up spawn tweens
-        this.activeSpawnTweens.forEach(tween => {
+        this.activeSpawnTweens.forEach((tween) => {
             if (tween && tween.isActive()) {
                 tween.stop();
             }
         });
         this.activeSpawnTweens.length = 0;
-        
+
         // Cancel delayed spawn calls
-        this.activeDelayedCalls.forEach(call => {
+        this.activeDelayedCalls.forEach((call) => {
             if (call && !call.hasDispatched) {
                 call.destroy();
             }
         });
         this.activeDelayedCalls.length = 0;
-        
+
         // Clean up any remaining visual effects (safety net)
-        // This catches any orphaned visual effects that weren't properly tracked
-        this.children.list.forEach(child => {
+        // Copy the list to avoid mutation during iteration
+        const childrenToCheck = [...this.children.list];
+        childrenToCheck.forEach((child) => {
+            if (!child || !child.active) return;
+
+            // Clean up Arc objects (spawn cues, shield rings, etc.)
             if (child instanceof Phaser.GameObjects.Arc) {
-                // Check if this looks like a spawn cue or elite glow effect by color
                 const arc = child as Phaser.GameObjects.Arc;
-                const isSpawnCue = arc.fillColor === 0x9ff0ff || arc.strokeColor === 0x6dd6ff;
-                const isEliteGlow = arc.fillColor === 0xff6b47 || arc.strokeColor === 0xff6b47;
-                
-                if (isSpawnCue || isEliteGlow) {
+                const isSpawnCue =
+                    arc.fillColor === 0x9ff0ff || arc.strokeColor === 0x6dd6ff;
+                const isEliteGlow =
+                    arc.fillColor === 0xff6b47 || arc.strokeColor === 0xff6b47;
+                const isBurstVisual = arc.getData("isBurstVisual") === true;
+
+                if (isSpawnCue || isEliteGlow || isBurstVisual) {
+                    child.destroy();
+                }
+            }
+
+            // Clean up Rectangle objects (debris particles from death animation)
+            if (child instanceof Phaser.GameObjects.Rectangle) {
+                const rect = child as Phaser.GameObjects.Rectangle;
+                // Debris particles are small cyan rectangles at depth 10
+                if (
+                    rect.depth === 10 &&
+                    rect.width <= 10 &&
+                    rect.fillColor === 0x9ff0ff
+                ) {
                     child.destroy();
                 }
             }
         });
-        
-        // Stop all tweens to prevent orphaned animations
-        this.tweens.killAll();
     }
 
     private handleBossPhaseChange() {
@@ -4698,12 +4933,12 @@ export class MainScene extends Phaser.Scene {
         if (phase !== this.bossPhase) {
             const previousPhase = this.bossPhase;
             this.bossPhase = phase;
-            
+
             // Enhanced visual and audio feedback (Requirements 2.5, 6.2, 6.4)
             this.triggerBossPhaseTransition(previousPhase, phase);
             this.pulseBackgroundForBossPhase(phase);
             gameEvents.emit(GAME_EVENT_KEYS.bossPhaseChanged, { phase });
-            
+
             // Immediate pattern reset for faster transitions (Requirement 2.5)
             this.bossNextPatternAt = this.time.now + 300; // Quick transition
         }
@@ -4712,36 +4947,39 @@ export class MainScene extends Phaser.Scene {
     private triggerBossPhaseTransition(_fromPhase: number, toPhase: number) {
         // Enhanced visual and audio feedback for phase changes (Requirements 6.2, 6.4)
         if (!this.boss) return;
-        
+
         // Screen shake intensity increases with phase
         const shakeIntensity = 0.01 + (toPhase - 1) * 0.005;
         const shakeDuration = 400 + (toPhase - 1) * 200;
         this.cameras.main.shake(shakeDuration, shakeIntensity);
-        
+
         // Enhanced screen effects for dangerous boss phases (Requirements 6.4)
         const phaseColors = [
             [255, 100, 100], // Phase 1: Red
-            [255, 150, 50],  // Phase 2: Orange  
-            [255, 50, 50]    // Phase 3: Intense Red
+            [255, 150, 50], // Phase 2: Orange
+            [255, 50, 50], // Phase 3: Intense Red
         ];
         const [r, g, b] = phaseColors[toPhase - 1];
-        
+
         // Longer, more intense flash for higher phases
         const flashDuration = 400 + (toPhase - 1) * 200;
         this.cameras.main.flash(flashDuration, r, g, b);
-        
+
         // Add screen distortion effects for phases 2 and 3
         if (toPhase >= 2 && !this.lowGraphics) {
             // Create temporary screen overlay for dangerous phases
-            const dangerOverlay = this.add.rectangle(
-                GAME_WIDTH / 2,
-                GAME_HEIGHT / 2,
-                GAME_WIDTH,
-                GAME_HEIGHT,
-                toPhase === 3 ? 0xff2020 : 0xff6020,
-                0.15
-            ).setDepth(10).setBlendMode(Phaser.BlendModes.MULTIPLY);
-            
+            const dangerOverlay = this.add
+                .rectangle(
+                    GAME_WIDTH / 2,
+                    GAME_HEIGHT / 2,
+                    GAME_WIDTH,
+                    GAME_HEIGHT,
+                    toPhase === 3 ? 0xff2020 : 0xff6020,
+                    0.15
+                )
+                .setDepth(10)
+                .setBlendMode(Phaser.BlendModes.MULTIPLY);
+
             // Pulsing danger overlay
             this.tweens.add({
                 targets: dangerOverlay,
@@ -4749,16 +4987,16 @@ export class MainScene extends Phaser.Scene {
                 duration: 800,
                 yoyo: true,
                 repeat: 3,
-                onComplete: () => dangerOverlay.destroy()
+                onComplete: () => dangerOverlay.destroy(),
             });
         }
-        
+
         // Boss visual enhancement
         if (this.boss) {
             // Increase boss tint intensity with phase
             const tintIntensity = 0xffffff - (toPhase - 1) * 0x202020;
             this.boss.setTint(tintIntensity);
-            
+
             // Scale pulse effect
             const originalScale = this.boss.scaleX;
             this.tweens.add({
@@ -4767,18 +5005,25 @@ export class MainScene extends Phaser.Scene {
                 scaleY: originalScale * 1.2,
                 duration: 200,
                 yoyo: true,
-                ease: 'Power2'
+                ease: "Power2",
             });
         }
-        
+
         // Audio feedback for boss phase change (Requirements 6.2, 6.4)
         soundManager.playSfx("bossPhaseChange");
-        
+
         // Spawn dramatic visual burst
         if (!this.lowGraphics && this.boss) {
             const burstRadius = 60 + (toPhase - 1) * 20;
-            const burstColor = toPhase === 3 ? 0xff3030 : (toPhase === 2 ? 0xff9632 : 0xff6464);
-            this.spawnBurstVisual(this.boss.x, this.boss.y, burstRadius, burstColor, 1.0);
+            const burstColor =
+                toPhase === 3 ? 0xff3030 : toPhase === 2 ? 0xff9632 : 0xff6464;
+            this.spawnBurstVisual(
+                this.boss.x,
+                this.boss.y,
+                burstRadius,
+                burstColor,
+                1.0
+            );
         }
     }
 
@@ -4902,7 +5147,7 @@ export class MainScene extends Phaser.Scene {
             : Phaser.Math.Clamp(waveNumber - 1, 0, WAVES.length - 1);
         // Clean up visual effects before clearing pools
         this.cleanupVisualEffects();
-        
+
         this.enemies.clear(true, true);
         this.enemyBullets.clear(true, true);
         this.xpPickups.clear(true, true);
