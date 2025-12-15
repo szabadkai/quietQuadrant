@@ -37,7 +37,10 @@ type SfxKey =
     | "enemyDown"
     | "xpPickup"
     | "playerHit"
-    | "playerDeath";
+    | "playerDeath"
+    | "eliteSpawn"
+    | "bossPhaseChange"
+    | "eliteExplosion";
 
 const clampVolume = (value: number) => Math.max(0, Math.min(1, value));
 
@@ -370,6 +373,89 @@ class SoundManager {
                     0.1
                 );
                 break;
+            case "eliteSpawn":
+                // Menacing elite spawn sound - deep growl with high harmonics
+                this.playTone(ctx, {
+                    frequency: 80 + Math.random() * 20,
+                    type: "sawtooth",
+                    duration: 0.4,
+                    attack: 0.02,
+                    decay: 0.15,
+                    release: 0.25,
+                    volume: 0.35,
+                    glide: 40,
+                });
+                this.playTone(
+                    ctx,
+                    {
+                        frequency: 320 + Math.random() * 60,
+                        type: "square",
+                        duration: 0.25,
+                        attack: 0.01,
+                        decay: 0.1,
+                        release: 0.15,
+                        volume: 0.25,
+                        glide: -80,
+                    },
+                    0.05
+                );
+                break;
+            case "bossPhaseChange":
+                // Dramatic boss phase change - powerful ascending tone with noise burst
+                this.playNoise(ctx, 0.3, 0.4, 1800);
+                this.playTone(ctx, {
+                    frequency: 150 + Math.random() * 30,
+                    type: "sawtooth",
+                    duration: 0.6,
+                    attack: 0.02,
+                    decay: 0.2,
+                    release: 0.4,
+                    volume: 0.45,
+                    glide: 200,
+                });
+                this.playTone(
+                    ctx,
+                    {
+                        frequency: 600 + Math.random() * 100,
+                        type: "triangle",
+                        duration: 0.4,
+                        attack: 0.01,
+                        decay: 0.15,
+                        release: 0.25,
+                        volume: 0.3,
+                        glide: -150,
+                    },
+                    0.1
+                );
+                break;
+            case "eliteExplosion":
+                // Elite death explosion - intense burst with metallic ring
+                this.playNoise(ctx, 0.25, 0.5, 2200);
+                this.playTone(ctx, {
+                    frequency: 400 + Math.random() * 100,
+                    type: "square",
+                    duration: 0.3,
+                    attack: 0.005,
+                    decay: 0.15,
+                    release: 0.15,
+                    volume: 0.4,
+                    glide: -250,
+                });
+                this.playTone(
+                    ctx,
+                    {
+                        frequency: 180,
+                        type: "sine",
+                        duration: 0.4,
+                        attack: 0.01,
+                        decay: 0.2,
+                        release: 0.2,
+                        volume: 0.35,
+                        glide: -100,
+                    },
+                    0.05
+                );
+                break;
             default:
                 break;
         }
@@ -421,6 +507,9 @@ class SoundManager {
             xpPickup: 0.05,
             playerHit: 0.4,
             playerDeath: 0.5,
+            eliteSpawn: 0.3,
+            bossPhaseChange: 1.0,
+            eliteExplosion: 0.2,
         };
         const last = this.sfxCooldowns.get(key) ?? 0;
         if (now - last < minGaps[key]) return true;

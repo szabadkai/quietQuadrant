@@ -69,6 +69,8 @@ export interface Settings {
 
 export type EnemyKind = "drifter" | "watcher" | "mass" | "boss";
 
+export type EliteBehavior = 'burst_movement' | 'rapid_fire' | 'shield_regen' | 'death_explosion';
+
 export interface EnemyDefinition {
 	kind: EnemyKind;
 	speed: number;
@@ -77,6 +79,7 @@ export interface EnemyDefinition {
 	fireCooldown?: number;
 	projectileSpeed?: number;
 	elite?: boolean;
+	eliteBehaviors?: EliteBehavior[];
 }
 
 export interface WaveDefinition {

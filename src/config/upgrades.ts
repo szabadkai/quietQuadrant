@@ -11,19 +11,19 @@ export const UPGRADE_BLUEPRINTS: UpgradeDefinition[] = [
 	{
 		id: "power-shot",
 		name: "Power Shot",
-		description: "Increase primary damage by 15% and +5% crit chance.",
+		description: "Increase primary damage by 15% and +5% crit chance. (Diminishing returns after 4 stacks)",
 		rarity: "common",
 		category: "offense",
-		maxStacks: 8,
+		maxStacks: 6,
 		dropWeight: 1.1,
 	},
 	{
 		id: "rapid-fire",
 		name: "Rapid Fire",
-		description: "Increase fire rate by 15%.",
+		description: "Increase fire rate by 15%. (Diminishing returns after 4 stacks)",
 		rarity: "common",
 		category: "offense",
-		maxStacks: 8,
+		maxStacks: 6,
 		dropWeight: 1.1,
 	},
 	{
@@ -47,10 +47,10 @@ export const UPGRADE_BLUEPRINTS: UpgradeDefinition[] = [
 	{
 		id: "plating",
 		name: "Light Plating",
-		description: "+1 max health and -8% incoming damage per stack.",
+		description: "+1 max health and -8% incoming damage per stack. (Diminishing returns after 3 stacks, capped at 50%)",
 		rarity: "common",
 		category: "defense",
-		maxStacks: 5,
+		maxStacks: 4,
 		dropWeight: 0.9,
 	},
 	{
@@ -75,7 +75,7 @@ export const UPGRADE_BLUEPRINTS: UpgradeDefinition[] = [
 		id: "heavy-barrel",
 		name: "Heavy Barrel",
 		description:
-			"+25% projectile size, +20% damage, +5% crit damage, -10% fire rate.",
+			"+25% projectile size, +20% damage, +5% crit damage, -10% fire rate. (Diminishing returns after 2 stacks)",
 		rarity: "common",
 		category: "offense",
 		maxStacks: 3,
@@ -224,7 +224,7 @@ export const UPGRADE_BLUEPRINTS: UpgradeDefinition[] = [
 		id: "glass-cannon",
 		name: "Glass Cannon",
 		description:
-			"Deal +200% Damage, +10% crit chance, but max HP is capped at 1.",
+			"Deal +150% Damage, +8% crit chance, but max HP is capped at 1. (Rebalanced)",
 		rarity: "legendary",
 		category: "offense",
 		maxStacks: 1,
@@ -243,7 +243,7 @@ export const UPGRADE_BLUEPRINTS: UpgradeDefinition[] = [
 	{
 		id: "bullet-hell",
 		name: "Bullet Hell",
-		description: "+300% Fire Rate. Accuracy -80%. Damage -40%.",
+		description: "+200% Fire Rate. Accuracy -80%. Damage -30%. (Rebalanced)",
 		rarity: "legendary",
 		category: "offense",
 		maxStacks: 1,
