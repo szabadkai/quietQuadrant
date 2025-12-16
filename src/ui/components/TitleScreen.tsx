@@ -61,7 +61,7 @@ export const TitleScreen = () => {
 				<div className="eyebrow">Quiet Quadrant</div>
 				<h1>One ship. One quadrant. Stay alive.</h1>
 				<p>
-					Minimalist roguelike shooter in a contained arena. Build a sharp
+					Build a sharp
 					loadout, weave through escalating waves, and survive the bullet-hell
 					boss.
 				</p>
@@ -108,13 +108,6 @@ export const TitleScreen = () => {
 					</button>
 				</div>
 				<br></br>
-				<div className="note">
-					Twin Mode now flies two ships at once. Pick who is on keyboard/mouse
-					or which controller each pilot uses before launching.
-				</div>
-				<div className="note">
-					Infinite Mode keeps looping past wave 11 with fast-scaling enemies.
-				</div>
 				{seasonInfo && (
 					<div className="season-card">
 						<div className="tiny label">This Week</div>
@@ -138,9 +131,10 @@ export const TitleScreen = () => {
 						{seasonInfo.affix?.description && (
 							<div className="note">{seasonInfo.affix.description}</div>
 						)}
+						<br></br>
 						{weeklyBest && (
 							<div className="leaderboard-card">
-								<div className="tiny label">Weekly High Score</div>
+								<div className="tiny label">Your Weekly High Score</div>
 								<div className="metric">Wave {weeklyBest.wavesCleared}</div>
 								<div className="tiny">
 									Time {Math.floor(weeklyBest.durationSeconds)}s · Enemies{" "}
