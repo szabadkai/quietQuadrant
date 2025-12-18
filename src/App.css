@@ -777,3 +777,137 @@ button.tiny {
 		flex-direction: column;
 	}
 }
+/* Multiplayer Setup Styles */
+.multiplayer-setup .actions button {
+	text-align: left;
+}
+
+.multiplayer-setup .actions button .tiny {
+	color: var(--vector-ink-muted);
+	margin-top: 4px;
+}
+
+/* Host Game Styles */
+.host-game .room-code-display {
+	text-align: center;
+	margin: 20px 0;
+	padding: 20px;
+	background: var(--vector-bg-subtle);
+	border-radius: 8px;
+	border: 1px solid var(--vector-border);
+}
+
+.host-game .room-code-display .label {
+	font-size: 12px;
+	text-transform: uppercase;
+	color: var(--vector-ink-muted);
+	margin-bottom: 8px;
+}
+
+.host-game .room-code-display .code {
+	font-size: 32px;
+	font-weight: bold;
+	font-family: 'Courier New', monospace;
+	letter-spacing: 4px;
+	color: var(--vector-accent);
+	margin-bottom: 8px;
+}
+
+.host-game .connection-status {
+	margin: 16px 0;
+}
+
+.host-game .connection-status .label {
+	font-size: 12px;
+	text-transform: uppercase;
+	color: var(--vector-ink-muted);
+	margin-bottom: 4px;
+}
+
+.host-game .connection-status .status {
+	color: var(--vector-ink);
+}
+
+.host-game .connection-status .success {
+	color: var(--vector-success, #4ade80);
+}
+
+/* Join Game Styles */
+.join-game .room-code-input {
+	margin: 20px 0;
+}
+
+.join-game .room-code-input .label {
+	display: block;
+	font-size: 12px;
+	text-transform: uppercase;
+	color: var(--vector-ink-muted);
+	margin-bottom: 8px;
+}
+
+.join-game .code-input {
+	width: 100%;
+	padding: 12px 16px;
+	font-size: 24px;
+	font-weight: bold;
+	font-family: 'Courier New', monospace;
+	letter-spacing: 4px;
+	text-align: center;
+	text-transform: uppercase;
+	background: var(--vector-bg-subtle);
+	border: 2px solid var(--vector-border);
+	border-radius: 8px;
+	color: var(--vector-ink);
+	outline: none;
+	transition: border-color 0.2s ease;
+}
+
+.join-game .code-input:focus {
+	border-color: var(--vector-accent);
+}
+
+.join-game .code-input:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+/* Status Messages */
+.status-message {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 16px;
+	margin: 16px 0;
+	background: var(--vector-bg-subtle);
+	border-radius: 8px;
+	border: 1px solid var(--vector-border);
+}
+
+.status-message.success {
+	border-color: var(--vector-success, #4ade80);
+	background: rgba(74, 222, 128, 0.1);
+}
+
+.error-message {
+	padding: 16px;
+	margin: 16px 0;
+	background: rgba(239, 68, 68, 0.1);
+	border: 1px solid #ef4444;
+	border-radius: 8px;
+	color: #ef4444;
+}
+
+/* Spinner */
+.spinner {
+	width: 20px;
+	height: 20px;
+	border: 2px solid var(--vector-border);
+	border-top: 2px solid var(--vector-accent);
+	border-radius: 50%;
+	animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+	0% { transform: rotate(0deg); }
+	100% { transform: rotate(360deg); }
+}

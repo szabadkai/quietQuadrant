@@ -15,6 +15,9 @@ import { PauseMenu } from "./ui/components/PauseMenu";
 import { SummaryScreen } from "./ui/components/SummaryScreen";
 import { TitleScreen } from "./ui/components/TitleScreen";
 import { TwinSetup } from "./ui/components/TwinSetup";
+import { MultiplayerSetup } from "./ui/components/MultiplayerSetup";
+import { HostGame } from "./ui/components/HostGame";
+import { JoinGame } from "./ui/components/JoinGame";
 import { UpgradeOverlay } from "./ui/components/UpgradeOverlay";
 import { WaveCountdown } from "./ui/components/WaveCountdown";
 
@@ -149,6 +152,9 @@ function App() {
 			{screen === "howToPlay" && <HowToPlay />}
 			{screen === "summary" && <SummaryScreen />}
 			{screen === "twinSetup" && <TwinSetup />}
+			{screen === "multiplayerSetup" && <MultiplayerSetup />}
+			{screen === "hostGame" && <HostGame />}
+			{screen === "joinGame" && <JoinGame />}
 		</div>
 	);
 }

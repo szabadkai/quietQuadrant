@@ -28,6 +28,7 @@ import type {
     UpgradeDefinition,
     WeeklyAffix,
 } from "../../models/types";
+import { useMultiplayerStore } from "../../state/useMultiplayerStore";
 import { useMetaStore } from "../../state/useMetaStore";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
@@ -440,6 +441,12 @@ export class MainScene extends Phaser.Scene {
         }
 
         controlSnapshots.forEach(({ pilot, binding, controls }) => {
+            // Handle remote players - sync their position from multiplayer store
+            if (binding.type === "remote") {
+                this.syncRemotePilot(pilot, binding);
+                return;
+            }
+
             this.handlePlayerMovement(pilot, dt, controls, binding);
             this.updateMomentum(pilot, dt, controls, binding);
             const fireHeld =
@@ -447,6 +454,11 @@ export class MainScene extends Phaser.Scene {
                 (binding.type === "keyboardMouse" && this.isPointerDown());
             this.updateChargeState(pilot, dt, fireHeld);
             this.handleShooting(pilot, controls, binding, fireHeld);
+
+            // Send local player position to remote peers in online mode
+            if (this.runMode === "online") {
+                this.broadcastLocalPilotPosition(pilot);
+            }
         });
         this.tickShieldTimers();
         controlSnapshots.forEach(({ pilot }) => this.updateShieldVisual(pilot));
@@ -1251,7 +1263,7 @@ export class MainScene extends Phaser.Scene {
             pilots.push(this.playerState!);
         }
         if (
-            this.runMode === "twin" &&
+            (this.runMode === "twin" || this.runMode === "online") &&
             this.isPilotActive(this.playerTwoState)
         ) {
             pilots.push(this.playerTwoState!);
@@ -1290,7 +1302,7 @@ export class MainScene extends Phaser.Scene {
     }
 
     private resolveControlBinding(pilotId: "p1" | "p2"): ControlBinding {
-        if (this.runMode !== "twin") {
+        if (this.runMode !== "twin" && this.runMode !== "online") {
             return (
                 this.twinControls?.[pilotId] ?? {
                     type: "keyboardMouse",
@@ -1333,7 +1345,11 @@ export class MainScene extends Phaser.Scene {
         pilot: PilotRuntime,
         binding: ControlBinding
     ): GamepadControlState {
-        if (this.runMode !== "twin") {
+        // Remote players don't have local controls
+        if (binding.type === "remote") {
+            return this.emptyControlState();
+        }
+        if (this.runMode !== "twin" && this.runMode !== "online") {
             return (
                 this.gamepadAdapter?.update() ??
                 pilot.gamepadState ??
@@ -1349,6 +1365,35 @@ export class MainScene extends Phaser.Scene {
             );
         }
         return this.readKeyboardControls(pilot);
+    }
+
+    private syncRemotePilot(pilot: PilotRuntime, binding: ControlBinding) {
+        if (binding.type !== "remote") return;
+
+        const { playerStates } = useMultiplayerStore.getState();
+        // In online mode, look for any remote player state
+        const remoteState = Object.values(playerStates)[0];
+
+        if (remoteState && remoteState.position) {
+            // Smoothly interpolate to remote position
+            const targetX = remoteState.position.x;
+            const targetY = remoteState.position.y;
+
+            pilot.sprite.x = Phaser.Math.Linear(pilot.sprite.x, targetX, 0.3);
+            pilot.sprite.y = Phaser.Math.Linear(pilot.sprite.y, targetY, 0.3);
+        }
+    }
+
+    private broadcastLocalPilotPosition(pilot: PilotRuntime) {
+        const { peerId, actions } = useMultiplayerStore.getState();
+
+        if (peerId) {
+            actions.updatePlayerState(peerId, {
+                position: { x: pilot.sprite.x, y: pilot.sprite.y },
+                health: 100, // TODO: sync actual health
+                isAlive: pilot.sprite.active,
+            });
+        }
     }
 
     private setupInput() {
@@ -1475,7 +1520,7 @@ export class MainScene extends Phaser.Scene {
 
     private resetState() {
         const settings = useMetaStore.getState().settings;
-        const twinActive = this.runMode === "twin";
+        const twinActive = this.runMode === "twin" || this.runMode === "online";
         if (
             !this.player ||
             !this.player2 ||
@@ -1500,8 +1545,10 @@ export class MainScene extends Phaser.Scene {
                 ? settings.difficultyMultiplier
                 : 1;
         this.difficulty = this.baseDifficulty;
-        this.modeEnemyCountMultiplier = this.runMode === "twin" ? 1.5 : 1;
-        this.enemyDamageTakenMultiplier = this.runMode === "twin" ? 1.2 : 1;
+        this.modeEnemyCountMultiplier =
+            this.runMode === "twin" || this.runMode === "online" ? 1.5 : 1;
+        this.enemyDamageTakenMultiplier =
+            this.runMode === "twin" || this.runMode === "online" ? 1.2 : 1;
         this.enemyHealthScale = 1;
         this.bossCleared = false;
         this.playerStats = {
@@ -1695,7 +1742,7 @@ export class MainScene extends Phaser.Scene {
             dir.copy(controls.move);
         } else if (
             binding.type === "keyboardMouse" ||
-            this.runMode !== "twin"
+            (this.runMode !== "twin" && this.runMode !== "online")
         ) {
             dir.copy(this.readKeyboardDirection());
         }
@@ -1727,7 +1774,8 @@ export class MainScene extends Phaser.Scene {
         const aimDir = this.getAimDirection(
             pilot,
             controls,
-            binding.type === "keyboardMouse" || this.runMode !== "twin"
+            binding.type === "keyboardMouse" ||
+                (this.runMode !== "twin" && this.runMode !== "online")
         );
         pilot.sprite.rotation = Phaser.Math.Angle.Between(
             0,
@@ -1915,7 +1963,8 @@ export class MainScene extends Phaser.Scene {
         const dir = this.getAimDirection(
             pilot,
             controls,
-            binding.type === "keyboardMouse" || this.runMode !== "twin"
+            binding.type === "keyboardMouse" ||
+                (this.runMode !== "twin" && this.runMode !== "online")
         );
         const spreadCount = this.playerStats.projectiles;
         const spreadStepDeg = this.spreadConfig.spreadDegrees;
@@ -3599,7 +3648,7 @@ export class MainScene extends Phaser.Scene {
             }
         };
         activate(this.playerState);
-        if (this.runMode === "twin") {
+        if (this.runMode === "twin" || this.runMode === "online") {
             activate(this.playerTwoState);
         }
     }

@@ -27,7 +27,7 @@ export const TitleScreen = () => {
 	};
 
 	const startTwin = () => {
-		setScreen("twinSetup");
+		setScreen("multiplayerSetup");
 	};
 
 	const startInfinite = () => {
@@ -88,7 +88,7 @@ export const TitleScreen = () => {
 						className={`ghost ${nav.focusedIndex === 2 ? "nav-focused" : ""}`}
 						onClick={startTwin}
 					>
-						Twin Mode
+						Multiplayer
 					</button>
 					<button
 						ref={infiniteRef}
