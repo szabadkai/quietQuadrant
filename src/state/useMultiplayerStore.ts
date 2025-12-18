@@ -20,9 +20,73 @@ export type ConnectionState =
 interface PlayerState {
     id: string;
     position: { x: number; y: number };
+    rotation: number;
     health: number;
     isAlive: boolean;
 }
+
+// Full game state for synchronization
+export interface GameStateSync {
+    players: {
+        p1: {
+            x: number;
+            y: number;
+            rotation: number;
+            health: number;
+            active: boolean;
+        };
+        p2: {
+            x: number;
+            y: number;
+            rotation: number;
+            health: number;
+            active: boolean;
+        };
+    };
+    enemies: Array<{
+        id: number;
+        x: number;
+        y: number;
+        health: number;
+        kind: string;
+        active: boolean;
+    }>;
+    bullets: Array<{
+        id: number;
+        x: number;
+        y: number;
+        vx: number;
+        vy: number;
+    }>;
+    playerBullets: Array<{
+        id: number;
+        x: number;
+        y: number;
+        vx: number;
+        vy: number;
+        rotation: number;
+    }>;
+    wave: number;
+    score: number;
+    timestamp: number;
+    // Countdown/intermission state
+    intermissionActive: boolean;
+    countdown: number | null;
+    pendingWave: number | null;
+}
+
+// Guest bullet spawn request
+export interface GuestBulletRequest {
+    x: number;
+    y: number;
+    dirX: number;
+    dirY: number;
+    timestamp: number;
+}
+
+// Callback type for game state updates
+type GameStateCallback = (state: GameStateSync) => void;
+type GuestBulletCallback = (bullet: GuestBulletRequest) => void;
 
 interface MultiplayerState {
     mode: MultiplayerMode;
@@ -34,6 +98,9 @@ interface MultiplayerState {
     playerStates: Record<string, PlayerState>;
     gameStarted: boolean;
     onGameStart: (() => void) | null;
+    latestGameState: GameStateSync | null;
+    onGameStateUpdate: GameStateCallback | null;
+    onGuestBullet: GuestBulletCallback | null;
     actions: {
         setMode: (mode: MultiplayerMode) => void;
         createRoom: () => Promise<string>;
@@ -44,8 +111,12 @@ interface MultiplayerState {
             state: Partial<PlayerState>
         ) => void;
         sendGameAction: (action: any) => void;
+        sendGameState: (state: GameStateSync) => void;
         startGame: () => void;
         setOnGameStart: (callback: (() => void) | null) => void;
+        setOnGameStateUpdate: (callback: GameStateCallback | null) => void;
+        setOnGuestBullet: (callback: GuestBulletCallback | null) => void;
+        sendGuestBullet: (bullet: GuestBulletRequest) => void;
     };
 }
 
@@ -59,6 +130,9 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
     playerStates: {},
     gameStarted: false,
     onGameStart: null,
+    latestGameState: null,
+    onGameStateUpdate: null,
+    onGuestBullet: null,
     actions: {
         setMode: (mode) => set({ mode }),
 
@@ -78,6 +152,14 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                 // Set up event handlers
                 const [, getPlayerUpdate] = room.makeAction("playerUpdate");
                 const [, getGameAction] = room.makeAction("gameAction");
+                const [, getGameState] = room.makeAction("gameState");
+                const [, getGuestBullet] = room.makeAction("guestBullet");
+
+                getGuestBullet((bullet: GuestBulletRequest) => {
+                    if (!bullet) return;
+                    const { onGuestBullet } = get();
+                    if (onGuestBullet) onGuestBullet(bullet);
+                });
 
                 getPlayerUpdate((data: any, peerId: string) => {
                     if (!data) return;
@@ -85,6 +167,7 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                     const existingState = playerStates[peerId] || {
                         id: peerId,
                         position: { x: 0, y: 0 },
+                        rotation: 0,
                         health: 100,
                         isAlive: true,
                     };
@@ -108,6 +191,13 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                         const { onGameStart } = get();
                         if (onGameStart) onGameStart();
                     }
+                });
+
+                getGameState((state: GameStateSync) => {
+                    if (!state) return;
+                    set({ latestGameState: state });
+                    const { onGameStateUpdate } = get();
+                    if (onGameStateUpdate) onGameStateUpdate(state);
                 });
 
                 room.onPeerJoin((peerId: string) => {
@@ -158,6 +248,7 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                 // Set up event handlers (same as host)
                 const [, getPlayerUpdate] = room.makeAction("playerUpdate");
                 const [, getGameAction] = room.makeAction("gameAction");
+                const [, getGameState] = room.makeAction("gameState");
 
                 getPlayerUpdate((data: any, peerId: string) => {
                     if (!data) return;
@@ -165,6 +256,7 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                     const existingState = playerStates[peerId] || {
                         id: peerId,
                         position: { x: 0, y: 0 },
+                        rotation: 0,
                         health: 100,
                         isAlive: true,
                     };
@@ -188,6 +280,13 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                         const { onGameStart } = get();
                         if (onGameStart) onGameStart();
                     }
+                });
+
+                getGameState((state: GameStateSync) => {
+                    if (!state) return;
+                    set({ latestGameState: state });
+                    const { onGameStateUpdate } = get();
+                    if (onGameStateUpdate) onGameStateUpdate(state);
                 });
 
                 room.onPeerJoin((peerId: string) => {
@@ -276,6 +375,14 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
             }
         },
 
+        sendGameState: (state: GameStateSync) => {
+            const room = (get() as any).room;
+            if (room) {
+                const [sendGameState] = room.makeAction("gameState");
+                sendGameState(state);
+            }
+        },
+
         startGame: () => {
             const { isHost, actions } = get();
             if (isHost) {
@@ -287,6 +394,22 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
 
         setOnGameStart: (callback) => {
             set({ onGameStart: callback });
+        },
+
+        setOnGameStateUpdate: (callback) => {
+            set({ onGameStateUpdate: callback });
+        },
+
+        setOnGuestBullet: (callback) => {
+            set({ onGuestBullet: callback });
+        },
+
+        sendGuestBullet: (bullet: GuestBulletRequest) => {
+            const room = (get() as any).room;
+            if (room) {
+                const [sendGuestBullet] = room.makeAction("guestBullet");
+                sendGuestBullet(bullet);
+            }
         },
     },
 }));

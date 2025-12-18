@@ -28,7 +28,11 @@ import type {
     UpgradeDefinition,
     WeeklyAffix,
 } from "../../models/types";
-import { useMultiplayerStore } from "../../state/useMultiplayerStore";
+import {
+    useMultiplayerStore,
+    type GameStateSync,
+    type GuestBulletRequest,
+} from "../../state/useMultiplayerStore";
 import { useMetaStore } from "../../state/useMetaStore";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
@@ -347,6 +351,12 @@ export class MainScene extends Phaser.Scene {
         this.runActive = true;
         this.runStartTime = this.time.now;
         soundManager.prepareRunMusic();
+
+        // Set up guest bullet handler for online host
+        if (this.runMode === "online") {
+            this.setupGuestBulletHandler();
+        }
+
         this.beginWaveIntermission(0);
     }
 
@@ -440,28 +450,65 @@ export class MainScene extends Phaser.Scene {
             }
         }
 
-        controlSnapshots.forEach(({ pilot, binding, controls }) => {
-            // Handle remote players - sync their position from multiplayer store
-            if (binding.type === "remote") {
-                this.syncRemotePilot(pilot, binding);
-                return;
-            }
+        // In online mode, handle based on host/guest role
+        const { isHost } = useMultiplayerStore.getState();
+        const isOnlineGuest = this.runMode === "online" && !isHost;
 
-            this.handlePlayerMovement(pilot, dt, controls, binding);
-            this.updateMomentum(pilot, dt, controls, binding);
-            const fireHeld =
-                controls.fireActive ||
-                (binding.type === "keyboardMouse" && this.isPointerDown());
-            this.updateChargeState(pilot, dt, fireHeld);
-            this.handleShooting(pilot, controls, binding, fireHeld);
+        if (isOnlineGuest) {
+            // Guest: Apply received game state, handle local input including shooting
+            this.applyReceivedGameState();
+            // Find local pilot and handle movement + shooting
+            controlSnapshots.forEach(({ pilot, binding, controls }) => {
+                if (binding.type === "keyboardMouse") {
+                    this.handlePlayerMovement(pilot, dt, controls, binding);
+                    this.updateMomentum(pilot, dt, controls, binding);
+                    const fireHeld =
+                        controls.fireActive ||
+                        (binding.type === "keyboardMouse" &&
+                            this.isPointerDown());
+                    this.updateChargeState(pilot, dt, fireHeld);
+                    // Guest sends bullet requests to host instead of spawning locally
+                    this.handleGuestShooting(
+                        pilot,
+                        controls,
+                        binding,
+                        fireHeld
+                    );
+                    this.broadcastLocalPilotPosition(pilot);
+                }
+            });
+        } else {
+            // Host or local: Run full simulation
+            controlSnapshots.forEach(({ pilot, binding, controls }) => {
+                // Handle remote players - sync their position from multiplayer store
+                if (binding.type === "remote") {
+                    this.syncRemotePilot(pilot, binding);
+                } else {
+                    this.handlePlayerMovement(pilot, dt, controls, binding);
+                    this.updateMomentum(pilot, dt, controls, binding);
+                    const fireHeld =
+                        controls.fireActive ||
+                        (binding.type === "keyboardMouse" &&
+                            this.isPointerDown());
+                    this.updateChargeState(pilot, dt, fireHeld);
+                    this.handleShooting(pilot, controls, binding, fireHeld);
+                }
+            });
 
-            // Send local player position to remote peers in online mode
-            if (this.runMode === "online") {
-                this.broadcastLocalPilotPosition(pilot);
+            // Host broadcasts game state to guest
+            if (this.runMode === "online" && isHost) {
+                this.broadcastGameState();
             }
-        });
+        }
+
         this.tickShieldTimers();
         controlSnapshots.forEach(({ pilot }) => this.updateShieldVisual(pilot));
+
+        // Guest skips simulation - it receives state from host
+        if (isOnlineGuest) {
+            return;
+        }
+
         this.handleEnemies();
         this.handleHeatseekingProjectiles(dt);
         this.handleProjectileBounds();
@@ -1370,21 +1417,339 @@ export class MainScene extends Phaser.Scene {
     private syncRemotePilot(pilot: PilotRuntime, binding: ControlBinding) {
         if (binding.type !== "remote") return;
 
-        const { playerStates } = useMultiplayerStore.getState();
-        // In online mode, look for any remote player state
-        const remoteState = Object.values(playerStates)[0];
+        const { playerStates, peerId } = useMultiplayerStore.getState();
+        // Get the remote peer's state (not our own)
+        const remoteState = Object.entries(playerStates).find(
+            ([id]) => id !== peerId
+        )?.[1];
 
         if (remoteState && remoteState.position) {
             // Smoothly interpolate to remote position
             const targetX = remoteState.position.x;
             const targetY = remoteState.position.y;
 
-            pilot.sprite.x = Phaser.Math.Linear(pilot.sprite.x, targetX, 0.3);
-            pilot.sprite.y = Phaser.Math.Linear(pilot.sprite.y, targetY, 0.3);
+            // Disable physics for remote player to prevent local physics from interfering
+            const body = pilot.sprite.body as Phaser.Physics.Arcade.Body;
+            if (body) {
+                body.setVelocity(0, 0);
+                body.setAcceleration(0, 0);
+            }
+
+            // Interpolate position
+            pilot.sprite.x = Phaser.Math.Linear(pilot.sprite.x, targetX, 0.5);
+            pilot.sprite.y = Phaser.Math.Linear(pilot.sprite.y, targetY, 0.5);
+
+            // Update rotation to face movement direction
+            if (this.lastRemotePos) {
+                const dx = targetX - this.lastRemotePos.x;
+                const dy = targetY - this.lastRemotePos.y;
+                if (dx * dx + dy * dy > 1) {
+                    pilot.sprite.rotation = Math.atan2(dy, dx);
+                }
+            }
+            this.lastRemotePos = { x: targetX, y: targetY };
         }
     }
 
+    private lastRemotePos?: { x: number; y: number };
+    private lastGameStateBroadcast = 0;
+    private readonly GAME_STATE_BROADCAST_INTERVAL = 33; // ~30fps for game state
+
+    private broadcastGameState() {
+        const now = this.time.now;
+        if (
+            now - this.lastGameStateBroadcast <
+            this.GAME_STATE_BROADCAST_INTERVAL
+        )
+            return;
+        this.lastGameStateBroadcast = now;
+
+        const { actions } = useMultiplayerStore.getState();
+
+        // Collect enemy data
+        const enemyData: GameStateSync["enemies"] = [];
+        this.enemies.getChildren().forEach((enemy: any, index: number) => {
+            if (enemy.active) {
+                enemyData.push({
+                    id: index,
+                    x: enemy.x,
+                    y: enemy.y,
+                    health: enemy.getData?.("health") ?? 100,
+                    kind: enemy.getData?.("kind") ?? "drifter",
+                    active: true,
+                });
+            }
+        });
+
+        // Collect bullet data (enemy bullets)
+        const bulletData: GameStateSync["bullets"] = [];
+        this.enemyBullets
+            .getChildren()
+            .forEach((bullet: any, index: number) => {
+                if (bullet.active) {
+                    const body = bullet.body as Phaser.Physics.Arcade.Body;
+                    bulletData.push({
+                        id: index,
+                        x: bullet.x,
+                        y: bullet.y,
+                        vx: body?.velocity?.x ?? 0,
+                        vy: body?.velocity?.y ?? 0,
+                    });
+                }
+            });
+
+        // Collect player bullet data
+        const playerBulletData: GameStateSync["playerBullets"] = [];
+        this.bullets.getChildren().forEach((bullet: any, index: number) => {
+            if (bullet.active) {
+                const body = bullet.body as Phaser.Physics.Arcade.Body;
+                playerBulletData.push({
+                    id: index,
+                    x: bullet.x,
+                    y: bullet.y,
+                    vx: body?.velocity?.x ?? 0,
+                    vy: body?.velocity?.y ?? 0,
+                    rotation: bullet.rotation ?? 0,
+                });
+            }
+        });
+
+        const gameState: GameStateSync = {
+            players: {
+                p1: {
+                    x: this.playerState?.sprite.x ?? 0,
+                    y: this.playerState?.sprite.y ?? 0,
+                    rotation: this.playerState?.sprite.rotation ?? 0,
+                    health: useRunStore.getState().playerHealth,
+                    active: this.playerState?.sprite.active ?? false,
+                },
+                p2: {
+                    x: this.playerTwoState?.sprite.x ?? 0,
+                    y: this.playerTwoState?.sprite.y ?? 0,
+                    rotation: this.playerTwoState?.sprite.rotation ?? 0,
+                    health: useRunStore.getState().playerHealth,
+                    active: this.playerTwoState?.sprite.active ?? false,
+                },
+            },
+            enemies: enemyData,
+            bullets: bulletData,
+            playerBullets: playerBulletData,
+            wave: this.waveIndex,
+            score: useRunStore.getState().enemiesDestroyed,
+            timestamp: now,
+            // Countdown/intermission state
+            intermissionActive: this.intermissionActive,
+            countdown: useRunStore.getState().intermissionCountdown,
+            pendingWave: this.pendingWaveIndex,
+        };
+
+        actions.sendGameState(gameState);
+    }
+
+    private applyReceivedGameState() {
+        const { latestGameState, isHost } = useMultiplayerStore.getState();
+        if (!latestGameState || isHost) return;
+
+        // Apply player positions (P1 is host's ship for guest)
+        if (this.playerState && latestGameState.players.p1) {
+            const p1 = latestGameState.players.p1;
+            this.playerState.sprite.x = Phaser.Math.Linear(
+                this.playerState.sprite.x,
+                p1.x,
+                0.5
+            );
+            this.playerState.sprite.y = Phaser.Math.Linear(
+                this.playerState.sprite.y,
+                p1.y,
+                0.5
+            );
+            this.playerState.sprite.rotation = p1.rotation;
+
+            // Disable physics for remote player
+            const body = this.playerState.sprite
+                .body as Phaser.Physics.Arcade.Body;
+            if (body) {
+                body.setVelocity(0, 0);
+                body.setAcceleration(0, 0);
+            }
+        }
+
+        // Apply enemy positions - spawn if needed, update if exists
+        const activeEnemies = this.enemies
+            .getChildren()
+            .filter((e: any) => e.active) as Phaser.Physics.Arcade.Image[];
+
+        // Spawn missing enemies or update existing ones
+        latestGameState.enemies.forEach((enemyData, index) => {
+            if (!enemyData.active) return;
+
+            let enemy = activeEnemies[index];
+            if (!enemy) {
+                // Determine texture based on enemy kind
+                const kind = enemyData.kind;
+                const textureKey =
+                    kind === "drifter"
+                        ? "drifter"
+                        : kind === "watcher"
+                        ? "watcher"
+                        : kind === "mass"
+                        ? "mass"
+                        : kind === "boss"
+                        ? "boss"
+                        : "drifter"; // fallback
+
+                // Spawn a new enemy for the guest
+                enemy = this.enemies.get(
+                    enemyData.x,
+                    enemyData.y,
+                    textureKey
+                ) as Phaser.Physics.Arcade.Image;
+                if (enemy) {
+                    enemy.setActive(true);
+                    enemy.setVisible(true);
+                    enemy.setScale(OBJECT_SCALE);
+                    enemy.setData("kind", enemyData.kind);
+                    enemy.setData("health", enemyData.health);
+                    enemy.setData("syncId", index);
+                }
+            }
+
+            if (enemy) {
+                enemy.x = Phaser.Math.Linear(enemy.x, enemyData.x, 0.5);
+                enemy.y = Phaser.Math.Linear(enemy.y, enemyData.y, 0.5);
+                enemy.setData("health", enemyData.health);
+            }
+        });
+
+        // Deactivate enemies that host no longer has
+        activeEnemies.forEach((enemy, index) => {
+            if (
+                index >= latestGameState.enemies.length ||
+                !latestGameState.enemies[index]?.active
+            ) {
+                enemy.setActive(false);
+                enemy.setVisible(false);
+            }
+        });
+
+        // Apply enemy bullet positions - spawn if needed
+        const activeBullets = this.enemyBullets
+            .getChildren()
+            .filter((b: any) => b.active) as Phaser.Physics.Arcade.Image[];
+
+        latestGameState.bullets.forEach((bulletData, index) => {
+            let bullet = activeBullets[index];
+            if (!bullet) {
+                // Spawn a new bullet for the guest
+                bullet = this.enemyBullets.get(
+                    bulletData.x,
+                    bulletData.y,
+                    "enemy-bullet"
+                ) as Phaser.Physics.Arcade.Image;
+                if (bullet) {
+                    bullet.setActive(true);
+                    bullet.setVisible(true);
+                    bullet.setScale(OBJECT_SCALE);
+                }
+            }
+
+            if (bullet) {
+                bullet.x = bulletData.x;
+                bullet.y = bulletData.y;
+                const body = bullet.body as Phaser.Physics.Arcade.Body;
+                if (body) {
+                    body.setVelocity(bulletData.vx, bulletData.vy);
+                }
+            }
+        });
+
+        // Deactivate bullets that host no longer has
+        activeBullets.forEach((bullet, index) => {
+            if (index >= latestGameState.bullets.length) {
+                bullet.setActive(false);
+                bullet.setVisible(false);
+            }
+        });
+
+        // Apply player bullet positions - sync from host
+        if (latestGameState.playerBullets) {
+            const activePlayerBullets = this.bullets
+                .getChildren()
+                .filter((b: any) => b.active) as Phaser.Physics.Arcade.Image[];
+
+            latestGameState.playerBullets.forEach((bulletData, index) => {
+                let bullet = activePlayerBullets[index];
+                if (!bullet) {
+                    // Spawn a new player bullet for the guest
+                    bullet = this.bullets.get(
+                        bulletData.x,
+                        bulletData.y,
+                        "bullet"
+                    ) as Phaser.Physics.Arcade.Image;
+                    if (bullet) {
+                        bullet.setActive(true);
+                        bullet.setVisible(true);
+                        bullet.setScale(OBJECT_SCALE);
+                    }
+                }
+
+                if (bullet) {
+                    bullet.x = bulletData.x;
+                    bullet.y = bulletData.y;
+                    bullet.rotation = bulletData.rotation;
+                    const body = bullet.body as Phaser.Physics.Arcade.Body;
+                    if (body) {
+                        body.setVelocity(bulletData.vx, bulletData.vy);
+                    }
+                }
+            });
+
+            // Deactivate player bullets that host no longer has
+            activePlayerBullets.forEach((bullet, index) => {
+                if (index >= (latestGameState.playerBullets?.length ?? 0)) {
+                    bullet.setActive(false);
+                    bullet.setVisible(false);
+                }
+            });
+        }
+
+        // Apply countdown/intermission state
+        const runActions = useRunStore.getState().actions;
+        if (
+            latestGameState.intermissionActive &&
+            latestGameState.countdown !== null
+        ) {
+            runActions.setWaveCountdown(
+                latestGameState.countdown,
+                latestGameState.pendingWave ?? this.waveIndex + 1
+            );
+            this.intermissionActive = true;
+            this.pendingWaveIndex = latestGameState.pendingWave;
+        } else if (
+            !latestGameState.intermissionActive &&
+            this.intermissionActive
+        ) {
+            // Intermission ended on host, clear it on guest
+            runActions.setWaveCountdown(null, null);
+            this.intermissionActive = false;
+            this.pendingWaveIndex = null;
+        }
+
+        // Sync wave index
+        if (latestGameState.wave !== this.waveIndex) {
+            this.waveIndex = latestGameState.wave;
+            runActions.setWave(latestGameState.wave);
+        }
+    }
+
+    private lastBroadcastTime = 0;
+    private readonly BROADCAST_INTERVAL = 16; // ~60fps
+
     private broadcastLocalPilotPosition(pilot: PilotRuntime) {
+        const now = this.time.now;
+        if (now - this.lastBroadcastTime < this.BROADCAST_INTERVAL) return;
+        this.lastBroadcastTime = now;
+
         const { peerId, actions } = useMultiplayerStore.getState();
 
         if (peerId) {
@@ -1394,6 +1759,63 @@ export class MainScene extends Phaser.Scene {
                 isAlive: pilot.sprite.active,
             });
         }
+    }
+
+    private lastGuestShotTime = 0;
+    private readonly GUEST_SHOT_COOLDOWN = 250; // ms between shots for guest
+
+    private handleGuestShooting(
+        pilot: PilotRuntime,
+        controls: GamepadControlState,
+        _binding: ControlBinding,
+        fireHeld: boolean
+    ) {
+        if (!this.isPilotActive(pilot)) return;
+        const fireRequested = fireHeld || controls.fireActive;
+        if (!fireRequested) return;
+
+        const now = this.time.now;
+        if (now - this.lastGuestShotTime < this.GUEST_SHOT_COOLDOWN) return;
+        this.lastGuestShotTime = now;
+
+        // Get aim direction
+        const dir = this.getAimDirection(pilot, controls, true);
+
+        // Send bullet request to host
+        const { actions } = useMultiplayerStore.getState();
+        actions.sendGuestBullet({
+            x: pilot.sprite.x,
+            y: pilot.sprite.y,
+            dirX: dir.x,
+            dirY: dir.y,
+            timestamp: now,
+        });
+
+        // Play sound locally for feedback
+        soundManager.playSfx("shoot");
+    }
+
+    setupGuestBulletHandler() {
+        // Host sets up handler to spawn bullets when guest shoots
+        const { actions, isHost } = useMultiplayerStore.getState();
+        if (!isHost) return;
+
+        actions.setOnGuestBullet((bullet: GuestBulletRequest) => {
+            // Spawn bullet at guest's position with their aim direction
+            const dir = new Phaser.Math.Vector2(bullet.dirX, bullet.dirY);
+            this.spawnBullet({
+                x: bullet.x,
+                y: bullet.y,
+                dir,
+                damage: this.playerStats.damage,
+                pierce: this.playerStats.pierce,
+                bounce: this.playerStats.bounce,
+                tags: [],
+                charged: false,
+                sizeMultiplier: 1,
+                sourceType: "primary",
+            });
+        });
     }
 
     private setupInput() {
@@ -1438,6 +1860,18 @@ export class MainScene extends Phaser.Scene {
     }
 
     private setupCollisions() {
+        // Explicitly prevent friendly fire - bullets should never hit players
+        // This is a safeguard even though there's no collision set up between them
+        this.physics.add.overlap(
+            this.bullets,
+            this.playersGroup,
+            () => {
+                // Do nothing - friendly fire is disabled
+            },
+            () => false, // Process callback returns false to prevent any collision
+            this
+        );
+
         this.physics.add.collider(
             this.enemies,
             this.enemies,

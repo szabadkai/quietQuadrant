@@ -11,7 +11,7 @@ export const JoinGame = () => {
 	const [roomCode, setRoomCode] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [isJoining, setIsJoining] = useState(false);
-	const [inputFocused, setInputFocused] = useState(false);
+	const [inputFocused, setInputFocused] = useState(true); // Start focused
 
 	const handleJoinRoom = async () => {
 		if (!roomCode.trim()) {
@@ -103,6 +103,7 @@ export const JoinGame = () => {
 						type="text"
 						value={roomCode}
 						onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+						autoFocus
 						onFocus={() => setInputFocused(true)}
 						onBlur={() => setInputFocused(false)}
 						onKeyDown={handleInputKeyDown}
