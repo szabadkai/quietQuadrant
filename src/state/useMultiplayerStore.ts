@@ -10,6 +10,52 @@ const getTrystero = async () => {
     return trysteroModule;
 };
 
+// ICE server configuration for better WebRTC connectivity
+// TODO: Move credentials to environment variables for production
+const EXPRESSTURN_URL = import.meta.env.VITE_TURN_URL || "";
+const EXPRESSTURN_USERNAME = import.meta.env.VITE_TURN_USERNAME || "";
+const EXPRESSTURN_PASSWORD = import.meta.env.VITE_TURN_PASSWORD || "";
+
+const rtcConfig: RTCConfiguration = {
+    iceServers: [
+        // Google's public STUN servers (fast, reliable)
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        // ExpressTURN - primary TURN server (if configured)
+        ...(EXPRESSTURN_URL
+            ? [
+                  {
+                      urls: `turn:${EXPRESSTURN_URL}:3478`,
+                      username: EXPRESSTURN_USERNAME,
+                      credential: EXPRESSTURN_PASSWORD,
+                  },
+                  {
+                      urls: `turn:${EXPRESSTURN_URL}:3478?transport=tcp`,
+                      username: EXPRESSTURN_USERNAME,
+                      credential: EXPRESSTURN_PASSWORD,
+                  },
+                  {
+                      urls: `turns:${EXPRESSTURN_URL}:5349`,
+                      username: EXPRESSTURN_USERNAME,
+                      credential: EXPRESSTURN_PASSWORD,
+                  },
+              ]
+            : []),
+        // Fallback: Open Relay Project - free TURN server
+        {
+            urls: "turn:openrelay.metered.ca:443",
+            username: "openrelayproject",
+            credential: "openrelayproject",
+        },
+        {
+            urls: "turn:openrelay.metered.ca:443?transport=tcp",
+            username: "openrelayproject",
+            credential: "openrelayproject",
+        },
+    ],
+    iceCandidatePoolSize: 10,
+};
+
 export type MultiplayerMode = "local" | "host" | "join";
 export type ConnectionState =
     | "disconnected"
@@ -146,7 +192,10 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                 set({ connectionState: "connecting", roomCode, isHost: true });
 
                 const { joinRoom, selfId } = await getTrystero();
-                const room = joinRoom({ appId: "quiet-quadrant" }, roomCode);
+                const room = joinRoom(
+                    { appId: "quiet-quadrant", rtcConfig },
+                    roomCode
+                );
                 const myId = selfId;
 
                 // Set up event handlers
@@ -242,7 +291,10 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                 set({ connectionState: "connecting", roomCode, isHost: false });
 
                 const { joinRoom, selfId } = await getTrystero();
-                const room = joinRoom({ appId: "quiet-quadrant" }, roomCode);
+                const room = joinRoom(
+                    { appId: "quiet-quadrant", rtcConfig },
+                    roomCode
+                );
                 const myId = selfId;
 
                 // Set up event handlers (same as host)
