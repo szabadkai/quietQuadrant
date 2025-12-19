@@ -18,42 +18,33 @@ const EXPRESSTURN_PASSWORD = import.meta.env.VITE_TURN_PASSWORD || "";
 
 const rtcConfig: RTCConfiguration = {
     iceServers: [
-        // Google's public STUN servers (fast, reliable)
+        // Single STUN server (one is sufficient for NAT traversal)
         { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        // ExpressTURN - primary TURN server (if configured)
+        // TURN server - use ExpressTURN if configured, otherwise Open Relay
+        // Note: VITE_TURN_URL should include the port (e.g., "relay1.expressturn.com:3478")
         ...(EXPRESSTURN_URL
             ? [
                   {
-                      urls: `turn:${EXPRESSTURN_URL}:3478`,
-                      username: EXPRESSTURN_USERNAME,
-                      credential: EXPRESSTURN_PASSWORD,
-                  },
-                  {
-                      urls: `turn:${EXPRESSTURN_URL}:3478?transport=tcp`,
-                      username: EXPRESSTURN_USERNAME,
-                      credential: EXPRESSTURN_PASSWORD,
-                  },
-                  {
-                      urls: `turns:${EXPRESSTURN_URL}:5349`,
+                      urls: [
+                          `turn:${EXPRESSTURN_URL}`,
+                          `turn:${EXPRESSTURN_URL}?transport=tcp`,
+                      ],
                       username: EXPRESSTURN_USERNAME,
                       credential: EXPRESSTURN_PASSWORD,
                   },
               ]
-            : []),
-        // Fallback: Open Relay Project - free TURN server
-        {
-            urls: "turn:openrelay.metered.ca:443",
-            username: "openrelayproject",
-            credential: "openrelayproject",
-        },
-        {
-            urls: "turn:openrelay.metered.ca:443?transport=tcp",
-            username: "openrelayproject",
-            credential: "openrelayproject",
-        },
+            : [
+                  {
+                      urls: [
+                          "turn:openrelay.metered.ca:443",
+                          "turn:openrelay.metered.ca:443?transport=tcp",
+                      ],
+                      username: "openrelayproject",
+                      credential: "openrelayproject",
+                  },
+              ]),
     ],
-    iceCandidatePoolSize: 10,
+    iceCandidatePoolSize: 4,
 };
 
 export type MultiplayerMode = "local" | "host" | "join";

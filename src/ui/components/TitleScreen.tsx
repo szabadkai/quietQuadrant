@@ -11,6 +11,7 @@ export const TitleScreen = () => {
 	const [seasonInfo, setSeasonInfo] = useState(() =>
 		gameManager.getSeasonInfo(),
 	);
+	const [seasonExpanded, setSeasonExpanded] = useState(false);
 	const bestRunsBySeed = useMetaStore((s) => s.bestRunsBySeed);
 
 	const weeklyBest = useMemo(() => {
@@ -55,12 +56,15 @@ export const TitleScreen = () => {
 		{ enabled: true, columns: 1, onBack: undefined },
 	);
 
+	// Check if we're on mobile
+	const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+
 	return (
 		<div className="overlay title-screen">
 			<div className="panel hero">
 				<div className="eyebrow">Quiet Quadrant</div>
 				<h1>One ship. One quadrant. Stay alive.</h1>
-				<p>
+				<p className="hero-desc">
 					Build a sharp
 					loadout, weave through escalating waves, and survive the bullet-hell
 					boss.
@@ -107,41 +111,50 @@ export const TitleScreen = () => {
 						How to Play
 					</button>
 				</div>
-				<br></br>
 				{seasonInfo && (
-					<div className="season-card">
-						<div className="tiny label">This Week</div>
-						<div className="season-row">
-							<span className="pill">Seed {seasonInfo.seedId}</span>
-							{seasonInfo.boss && (
-								<span className="pill">
-									Boss:{" "}
-									{BOSSES.find((b) => b.id === seasonInfo.boss?.id)?.name ??
-										seasonInfo.boss.name}
-								</span>
+					<div className={`season-card ${seasonExpanded ? "expanded" : ""}`}>
+						<button
+							className="season-header"
+							onClick={() => isMobile && setSeasonExpanded(!seasonExpanded)}
+							aria-expanded={seasonExpanded}
+						>
+							<div className="tiny label">This Week</div>
+							<div className="season-row">
+								<span className="pill">Seed {seasonInfo.seedId}</span>
+								{seasonInfo.boss && (
+									<span className="pill">
+										Boss:{" "}
+										{BOSSES.find((b) => b.id === seasonInfo.boss?.id)?.name ??
+											seasonInfo.boss.name}
+									</span>
+								)}
+								{seasonInfo.affix && (
+									<span className="pill">
+										Affix:{" "}
+										{AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ??
+											seasonInfo.affix.name}
+									</span>
+								)}
+							</div>
+							{isMobile && (
+								<span className="expand-icon">{seasonExpanded ? "▲" : "▼"}</span>
 							)}
-							{seasonInfo.affix && (
-								<span className="pill">
-									Affix:{" "}
-									{AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ??
-										seasonInfo.affix.name}
-								</span>
+						</button>
+						<div className="season-details">
+							{seasonInfo.affix?.description && (
+								<div className="note">{seasonInfo.affix.description}</div>
+							)}
+							{weeklyBest && (
+								<div className="leaderboard-card">
+									<div className="tiny label">Your Weekly High Score</div>
+									<div className="metric">Wave {weeklyBest.wavesCleared}</div>
+									<div className="tiny">
+										Time {Math.floor(weeklyBest.durationSeconds)}s · Enemies{" "}
+										{weeklyBest.enemiesDestroyed}
+									</div>
+								</div>
 							)}
 						</div>
-						{seasonInfo.affix?.description && (
-							<div className="note">{seasonInfo.affix.description}</div>
-						)}
-						<br></br>
-						{weeklyBest && (
-							<div className="leaderboard-card">
-								<div className="tiny label">Your Weekly High Score</div>
-								<div className="metric">Wave {weeklyBest.wavesCleared}</div>
-								<div className="tiny">
-									Time {Math.floor(weeklyBest.durationSeconds)}s · Enemies{" "}
-									{weeklyBest.enemiesDestroyed}
-								</div>
-							</div>
-						)}
 					</div>
 				)}
 			</div>

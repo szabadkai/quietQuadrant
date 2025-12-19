@@ -20,6 +20,10 @@ import { HostGame } from "./ui/components/HostGame";
 import { JoinGame } from "./ui/components/JoinGame";
 import { UpgradeOverlay } from "./ui/components/UpgradeOverlay";
 import { WaveCountdown } from "./ui/components/WaveCountdown";
+import { TouchControls } from "./ui/components/TouchControls";
+import { useInputStore } from "./state/useInputStore";
+import { isMobileBrowser } from "./utils/device";
+import { isNativeMobile } from "./utils/mobile";
 
 function App() {
 	const screen = useUIStore((s) => s.screen);
@@ -27,6 +31,13 @@ function App() {
 
 	useEffect(() => {
 		useMetaStore.getState().actions.hydrateFromPersistence();
+	}, []);
+
+	// Detect mobile and enable touch controls
+	useEffect(() => {
+		if (isMobileBrowser() || isNativeMobile()) {
+			useInputStore.getState().actions.setIsMobile(true);
+		}
 	}, []);
 
 	useEffect(() => {
@@ -155,6 +166,7 @@ function App() {
 			{screen === "multiplayerSetup" && <MultiplayerSetup />}
 			{screen === "hostGame" && <HostGame />}
 			{screen === "joinGame" && <JoinGame />}
+			<TouchControls />
 		</div>
 	);
 }

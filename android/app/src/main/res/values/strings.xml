@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Quiet Quadrant</string>
+    <string name="title_activity_main">Quiet Quadrant</string>
+    <string name="package_name">com.quietquadrant.game</string>
+    <string name="custom_url_scheme">com.quietquadrant.game</string>
+</resources>

@@ -36,6 +36,7 @@ import {
 import { useMetaStore } from "../../state/useMetaStore";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
+import { useInputStore } from "../../state/useInputStore";
 import { Prng } from "../../utils/seed";
 import { GAME_EVENT_KEYS, gameEvents } from "../events";
 import { GAME_HEIGHT, GAME_WIDTH } from "../GameConfig";
@@ -458,6 +459,7 @@ export class MainScene extends Phaser.Scene {
             // Guest: Apply received game state, handle local input including shooting
             this.applyReceivedGameState();
             // Find local pilot and handle movement + shooting
+            const isMobileInput = useInputStore.getState().isMobile;
             controlSnapshots.forEach(({ pilot, binding, controls }) => {
                 if (binding.type === "keyboardMouse") {
                     this.handlePlayerMovement(pilot, dt, controls, binding);
@@ -465,6 +467,7 @@ export class MainScene extends Phaser.Scene {
                     const fireHeld =
                         controls.fireActive ||
                         (binding.type === "keyboardMouse" &&
+                            !isMobileInput &&
                             this.isPointerDown());
                     this.updateChargeState(pilot, dt, fireHeld);
                     // Guest sends bullet requests to host instead of spawning locally
@@ -479,6 +482,7 @@ export class MainScene extends Phaser.Scene {
             });
         } else {
             // Host or local: Run full simulation
+            const isMobileInput = useInputStore.getState().isMobile;
             controlSnapshots.forEach(({ pilot, binding, controls }) => {
                 // Handle remote players - sync their position from multiplayer store
                 if (binding.type === "remote") {
@@ -489,6 +493,7 @@ export class MainScene extends Phaser.Scene {
                     const fireHeld =
                         controls.fireActive ||
                         (binding.type === "keyboardMouse" &&
+                            !isMobileInput &&
                             this.isPointerDown());
                     this.updateChargeState(pilot, dt, fireHeld);
                     this.handleShooting(pilot, controls, binding, fireHeld);
@@ -1374,6 +1379,47 @@ export class MainScene extends Phaser.Scene {
     }
 
     private readKeyboardControls(pilot: PilotRuntime): GamepadControlState {
+        const inputState = useInputStore.getState();
+
+        // If in mobile mode, always use mobile input path (even when sticks are idle)
+        // This prevents touch events from being misinterpreted as mouse clicks
+        if (inputState.isMobile) {
+            const move = new Phaser.Math.Vector2(
+                inputState.leftStick.x,
+                inputState.leftStick.y
+            );
+
+            // Right stick for aiming, or use movement direction if not active
+            let aim: Phaser.Math.Vector2;
+            if (inputState.rightStick.active) {
+                aim = new Phaser.Math.Vector2(
+                    inputState.rightStick.x,
+                    inputState.rightStick.y
+                );
+            } else if (move.lengthSq() > 0) {
+                aim = move.clone().normalize();
+            } else {
+                aim = pilot.lastAimDirection.clone();
+            }
+
+            // Fire when right stick is active with sufficient magnitude
+            const fireActive =
+                inputState.rightStick.active &&
+                inputState.rightStick.magnitude > 0.2;
+
+            return {
+                hasGamepad: false,
+                usingGamepad: false,
+                move,
+                aim,
+                fireActive,
+                dashPressed: false, // Could add a dash button for mobile later
+                pausePressed: false,
+                swapRequested: false,
+            };
+        }
+
+        // Fall back to keyboard/mouse controls (only when not in mobile mode)
         const dir = this.readKeyboardDirection();
         const aim = this.getPointerAim(pilot);
         return {
@@ -1396,6 +1442,13 @@ export class MainScene extends Phaser.Scene {
         if (binding.type === "remote") {
             return this.emptyControlState();
         }
+
+        // In mobile mode, always use readKeyboardControls which handles virtual sticks
+        const inputState = useInputStore.getState();
+        if (inputState.isMobile) {
+            return this.readKeyboardControls(pilot);
+        }
+
         if (this.runMode !== "twin" && this.runMode !== "online") {
             return (
                 this.gamepadAdapter?.update() ??
@@ -2178,7 +2231,13 @@ export class MainScene extends Phaser.Scene {
             binding.type === "keyboardMouse" ||
             (this.runMode !== "twin" && this.runMode !== "online")
         ) {
-            dir.copy(this.readKeyboardDirection());
+            // Check touch input first, then keyboard
+            const inputState = useInputStore.getState();
+            if (inputState.isMobile && inputState.leftStick.active) {
+                dir.set(inputState.leftStick.x, inputState.leftStick.y);
+            } else {
+                dir.copy(this.readKeyboardDirection());
+            }
         }
 
         if (dir.lengthSq() > 0) {

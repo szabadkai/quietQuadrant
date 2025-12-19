@@ -11,12 +11,10 @@
 }
 
 .playfield {
-	position: relative;
+	position: absolute;
+	inset: 0;
 	width: 100%;
 	height: 100%;
-	display: flex;
-	align-items: center;
-	justify-content: center;
 }
 
 #root {
@@ -25,12 +23,10 @@
 }
 
 .game-root {
-	position: relative;
+	position: absolute;
+	inset: 0;
 	width: 100%;
 	height: 100%;
-	display: flex;
-	align-items: center;
-	justify-content: center;
 }
 
 canvas {
@@ -777,6 +773,627 @@ button.tiny {
 		flex-direction: column;
 	}
 }
+
+/* Phone landscape: single-row compact HUD */
+@media (max-height: 500px) and (orientation: landscape) {
+	.hud {
+		top: 4px;
+		padding: 0 6px;
+	}
+	.hud-row {
+		grid-template-columns: repeat(5, minmax(0, 1fr));
+		gap: 6px;
+	}
+	.hud-block {
+		padding: 3px 6px;
+		min-height: unset;
+		gap: 2px;
+	}
+	.hud-block .bar {
+		height: 6px;
+		margin: 2px 0;
+	}
+	.hud-block .label {
+		font-size: 9px;
+	}
+	.hud-block .tiny {
+		font-size: 10px;
+	}
+	.hud-block .metric {
+		font-size: 14px;
+	}
+	.hud-bottom-line {
+		min-height: 12px;
+	}
+}
+
+/* ========================================
+   MOBILE MENU OPTIMIZATIONS
+   Common breakpoints:
+   - iPhone SE: 375x667
+   - iPhone 12/13/14: 390x844
+   - iPhone 14 Pro Max: 430x932
+   - Samsung Galaxy S21: 360x800
+   - Pixel 7: 412x915
+   ======================================== */
+
+/* Tablet and smaller */
+@media (max-width: 768px) {
+	.panel {
+		width: calc(100vw - 24px);
+		max-width: none;
+		max-height: calc(100vh - 24px);
+		max-height: calc(100dvh - 24px);
+		padding: 16px;
+		overflow-y: auto;
+		overflow-x: hidden;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.panel-header {
+		font-size: 11px;
+		margin-bottom: 8px;
+	}
+
+	.title-screen .panel.hero h1 {
+		font-size: clamp(22px, 5vw, 32px);
+		margin: 4px 0;
+	}
+
+	.title-screen .panel.hero p {
+		font-size: 13px;
+		line-height: 1.4;
+	}
+
+	.eyebrow {
+		font-size: 10px;
+	}
+
+	button {
+		padding: 10px 14px;
+		font-size: 12px;
+		min-height: 44px; /* Touch target */
+	}
+
+	button.tiny {
+		padding: 6px 10px;
+		font-size: 10px;
+		min-height: 36px;
+	}
+
+	.actions {
+		gap: 8px;
+	}
+
+	.actions button {
+		width: 100%;
+	}
+
+	.note {
+		font-size: 12px;
+	}
+
+	.tiny {
+		font-size: 11px;
+	}
+
+	.metric {
+		font-size: 18px;
+	}
+
+	.label {
+		font-size: 10px;
+	}
+
+	/* Season card compact */
+	.season-card {
+		padding: 10px;
+		margin-top: 12px;
+	}
+
+	.season-row {
+		flex-wrap: wrap;
+		gap: 4px;
+	}
+
+	.pill {
+		padding: 4px 8px;
+		font-size: 10px;
+	}
+
+	.pill-row {
+		gap: 4px;
+	}
+
+	/* Upgrade grid */
+	.upgrade-grid {
+		grid-template-columns: 1fr;
+		gap: 8px;
+	}
+
+	.upgrade-card {
+		padding: 12px;
+		min-height: 80px;
+	}
+
+	.upgrade-card .name {
+		font-size: 14px;
+	}
+
+	.upgrade-card .desc {
+		font-size: 12px;
+	}
+
+	.upgrade-card .rarity {
+		font-size: 9px;
+	}
+
+	/* Upgrade overlay specific - ensure it's centered and scrollable */
+	.upgrade-overlay .panel {
+		max-height: calc(100vh - 40px);
+		max-height: calc(100dvh - 40px);
+	}
+
+	.upgrade-overlay .upgrade-grid {
+		max-height: calc(100vh - 120px);
+		max-height: calc(100dvh - 120px);
+		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	/* Swatch grid */
+	.swatch-grid {
+		grid-template-columns: 1fr;
+		gap: 8px;
+	}
+
+	.upgrade-swatch {
+		padding: 8px 10px;
+	}
+
+	.swatch-name {
+		font-size: 13px;
+	}
+
+	.swatch-desc {
+		font-size: 11px;
+	}
+
+	.swatch-top .pill {
+		padding: 2px 6px;
+		font-size: 9px;
+	}
+
+	/* Info grid */
+	.info-grid {
+		grid-template-columns: repeat(2, 1fr);
+		gap: 8px;
+	}
+
+	.info-grid > div {
+		padding: 8px;
+		background: rgba(3, 8, 14, 0.4);
+		border-radius: 4px;
+	}
+
+	.info-grid .label {
+		margin-bottom: 4px;
+	}
+
+	.info-grid .desc {
+		font-size: 12px;
+		line-height: 1.3;
+	}
+
+	/* Summary grid */
+	.summary-grid {
+		grid-template-columns: repeat(3, 1fr);
+		gap: 8px;
+	}
+
+	/* Settings */
+	.settings-grid {
+		gap: 8px;
+	}
+
+	.setting-row {
+		gap: 6px;
+	}
+
+	/* Pause menu */
+	.pause-menu .panel {
+		max-height: calc(100vh - 24px);
+		max-height: calc(100dvh - 24px);
+	}
+
+	.pause-loadout {
+		margin-top: 8px;
+		max-height: 150px;
+		overflow-y: auto;
+	}
+
+	.pause-settings {
+		margin-top: 8px;
+	}
+
+	.subheader {
+		font-size: 10px;
+		margin: 12px 0 6px;
+	}
+
+	/* Pause menu note */
+	.pause-menu .note {
+		font-size: 11px;
+		margin-top: 8px;
+	}
+
+	/* Twin setup */
+	.twin-setup .setup-grid {
+		grid-template-columns: 1fr;
+		gap: 12px;
+	}
+
+	.option-chip {
+		min-height: 44px;
+		font-size: 12px;
+	}
+
+	/* Multiplayer buttons with descriptions */
+	.multiplayer-setup .actions button {
+		padding: 12px 14px;
+	}
+
+	.multiplayer-setup .actions button .tiny {
+		font-size: 10px;
+		margin-top: 2px;
+	}
+
+	/* Host/Join game */
+	.room-code-display {
+		padding: 14px;
+		margin: 14px 0;
+	}
+
+	.room-code-display .code {
+		font-size: 24px;
+		letter-spacing: 3px;
+	}
+
+	.code-input {
+		font-size: 20px;
+		padding: 10px 12px;
+	}
+
+	/* Leaderboard */
+	.leaderboard-panel {
+		max-height: calc(100vh - 24px);
+		max-height: calc(100dvh - 24px);
+	}
+
+	.tab-row {
+		gap: 6px;
+	}
+
+	.tab {
+		padding: 8px 12px;
+		font-size: 11px;
+		min-height: 40px;
+	}
+
+	.leaderboard-row-main {
+		padding: 8px;
+		gap: 6px;
+	}
+
+	.leaderboard-row .metric {
+		font-size: 14px;
+	}
+
+	/* Victory screen */
+	.victory-title {
+		font-size: clamp(24px, 6vw, 36px);
+	}
+
+	.victory-sub {
+		font-size: 13px;
+	}
+}
+
+/* Small phones (iPhone SE, small Androids) */
+@media (max-width: 390px) {
+	.panel {
+		padding: 12px;
+		width: calc(100vw - 16px);
+		max-height: calc(100vh - 16px);
+		max-height: calc(100dvh - 16px);
+	}
+
+	.title-screen .panel.hero h1 {
+		font-size: 20px;
+	}
+
+	.title-screen .panel.hero p {
+		font-size: 12px;
+	}
+
+	button {
+		padding: 8px 12px;
+		font-size: 11px;
+	}
+
+	.upgrade-grid {
+		gap: 6px;
+	}
+
+	.upgrade-card {
+		padding: 10px;
+	}
+
+	.upgrade-card .name {
+		font-size: 13px;
+	}
+
+	.upgrade-card .desc {
+		font-size: 11px;
+	}
+
+	.info-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.summary-grid {
+		grid-template-columns: repeat(3, 1fr);
+		gap: 6px;
+	}
+
+	.summary-grid .metric {
+		font-size: 16px;
+	}
+
+	.pill {
+		padding: 3px 6px;
+		font-size: 9px;
+	}
+
+	.room-code-display .code {
+		font-size: 20px;
+		letter-spacing: 2px;
+	}
+
+	.code-input {
+		font-size: 18px;
+	}
+
+	/* Hide less important info on very small screens */
+	.pause-season {
+		display: none;
+	}
+
+	/* Collapsible season card on mobile */
+	.season-card {
+		margin-top: 12px;
+	}
+
+	.season-header {
+		cursor: pointer;
+		padding: 10px;
+	}
+
+	.season-header:active {
+		background: rgba(120, 243, 255, 0.05);
+	}
+
+	.season-details {
+		display: none;
+		padding: 0 10px 10px;
+	}
+
+	.season-card.expanded .season-details {
+		display: block;
+	}
+
+	.hero-desc {
+		font-size: 12px;
+		line-height: 1.4;
+	}
+}
+
+/* Landscape phones - prioritize horizontal space */
+@media (max-height: 500px) and (orientation: landscape) {
+	.overlay {
+		padding: 8px;
+	}
+
+	.panel {
+		max-height: calc(100vh - 16px);
+		max-height: calc(100dvh - 16px);
+		padding: 12px 16px;
+		width: min(90vw, 600px);
+	}
+
+	.panel-header {
+		margin-bottom: 6px;
+	}
+
+	.title-screen .panel.hero h1 {
+		font-size: 20px;
+		margin: 2px 0;
+	}
+
+	.title-screen .panel.hero p {
+		font-size: 11px;
+		display: none; /* Hide description in landscape */
+	}
+
+	.actions {
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.actions button {
+		flex: 1 1 auto;
+		min-width: 100px;
+		width: auto;
+		padding: 8px 12px;
+		font-size: 10px;
+	}
+
+	/* Hide season card in landscape to save space */
+	.season-card {
+		display: none;
+	}
+
+	.leaderboard-card {
+		display: none;
+	}
+
+	/* Upgrade selection - horizontal layout */
+	.upgrade-grid {
+		grid-template-columns: repeat(3, 1fr);
+		gap: 6px;
+	}
+
+	.upgrade-card {
+		padding: 8px;
+	}
+
+	.upgrade-card .name {
+		font-size: 12px;
+	}
+
+	.upgrade-card .desc {
+		font-size: 10px;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	/* Summary - compact */
+	.summary-grid {
+		grid-template-columns: repeat(3, 1fr);
+		gap: 6px;
+		margin: 8px 0;
+	}
+
+	.summary-grid .metric {
+		font-size: 16px;
+	}
+
+	.upgrades-list,
+	.achievements-list {
+		display: none;
+	}
+
+	/* Pause menu - hide loadout */
+	.pause-loadout,
+	.pause-season,
+	.pause-settings {
+		display: none;
+	}
+
+	/* Twin setup horizontal */
+	.twin-setup .setup-grid {
+		grid-template-columns: repeat(2, 1fr);
+		gap: 8px;
+	}
+
+	.option-chip {
+		padding: 6px 10px;
+		font-size: 10px;
+		min-height: 36px;
+	}
+
+	/* Info grid horizontal */
+	.info-grid {
+		grid-template-columns: repeat(3, 1fr);
+		gap: 6px;
+	}
+
+	.info-grid > div {
+		padding: 4px;
+	}
+
+	.info-grid .desc {
+		font-size: 10px;
+	}
+
+	.note {
+		font-size: 10px;
+		margin-top: 6px;
+	}
+
+	/* Victory compact */
+	.victory-hero {
+		margin-bottom: 6px;
+	}
+
+	.victory-title {
+		font-size: 22px;
+	}
+
+	.victory-sub {
+		font-size: 11px;
+		margin-top: 2px;
+	}
+}
+
+/* Extra small landscape (iPhone SE landscape) */
+@media (max-height: 400px) and (orientation: landscape) {
+	.panel {
+		padding: 8px 12px;
+	}
+
+	.title-screen .panel.hero h1 {
+		font-size: 18px;
+	}
+
+	.actions button {
+		padding: 6px 10px;
+		font-size: 9px;
+		min-height: 32px;
+	}
+
+	.upgrade-grid {
+		grid-template-columns: repeat(3, 1fr);
+	}
+
+	.upgrade-card {
+		padding: 6px;
+	}
+
+	.upgrade-card .rarity {
+		font-size: 8px;
+		margin-bottom: 2px;
+	}
+
+	.upgrade-card .name {
+		font-size: 11px;
+	}
+
+	.upgrade-card .desc {
+		font-size: 9px;
+		-webkit-line-clamp: 1;
+	}
+}
+
+/* Safe area insets for notched phones */
+@supports (padding: max(0px)) {
+	.panel {
+		padding-left: max(16px, env(safe-area-inset-left));
+		padding-right: max(16px, env(safe-area-inset-right));
+		padding-bottom: max(16px, env(safe-area-inset-bottom));
+	}
+
+	@media (max-width: 768px) {
+		.panel {
+			padding-left: max(12px, env(safe-area-inset-left));
+			padding-right: max(12px, env(safe-area-inset-right));
+			padding-bottom: max(12px, env(safe-area-inset-bottom));
+		}
+	}
+}
 /* Multiplayer Setup Styles */
 .multiplayer-setup .actions button {
 	text-align: left;
@@ -910,4 +1527,300 @@ button.tiny {
 @keyframes spin {
 	0% { transform: rotate(0deg); }
 	100% { transform: rotate(360deg); }
+}
+
+/* Touch Controls - Dual Stick */
+.touch-layer {
+	position: fixed;
+	inset: 0;
+	z-index: 10;
+	pointer-events: none;
+	touch-action: none;
+}
+
+.touch-zone {
+	position: absolute;
+	bottom: 0;
+	width: 50%;
+	height: 100%;
+	pointer-events: auto;
+	touch-action: none;
+}
+
+.touch-zone.left {
+	left: 0;
+}
+
+.touch-zone.right {
+	right: 0;
+}
+
+.touch-stick {
+	position: absolute;
+	bottom: 80px;
+	width: 120px;
+	height: 120px;
+}
+
+.touch-zone.left .touch-stick {
+	left: 40px;
+}
+
+.touch-zone.right .touch-stick {
+	right: 40px;
+}
+
+.stick-ring {
+	position: absolute;
+	inset: 0;
+	border: 2px solid var(--vector-line);
+	border-radius: 50%;
+	background: rgba(120, 243, 255, 0.08);
+	box-shadow:
+		0 0 20px rgba(120, 243, 255, 0.15),
+		inset 0 0 30px rgba(120, 243, 255, 0.05);
+}
+
+.stick-thumb {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 50px;
+	height: 50px;
+	border-radius: 50%;
+	background: radial-gradient(
+		circle at 30% 30%,
+		var(--vector-ink),
+		var(--vector-ink-soft)
+	);
+	border: 2px solid var(--vector-ink-strong);
+	box-shadow:
+		0 0 16px rgba(120, 243, 255, 0.5),
+		0 4px 8px rgba(0, 0, 0, 0.3);
+	transition: opacity 0.15s ease;
+}
+
+/* Orientation overlay */
+.orientation-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100;
+	background: rgba(1, 3, 8, 0.95);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.orientation-card {
+	text-align: center;
+	padding: 32px;
+}
+
+.orientation-title {
+	font-size: 24px;
+	font-weight: 600;
+	color: var(--vector-ink-strong);
+	margin-bottom: 12px;
+}
+
+.orientation-copy {
+	color: var(--vector-ink-soft);
+	font-size: 14px;
+}
+
+/* Mobile menu button */
+.mobile-menu-btn {
+	position: fixed;
+	top: 12px;
+	right: 12px;
+	z-index: 15;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(4, 10, 16, 0.85);
+	border: 1px solid var(--vector-line);
+	border-radius: 8px;
+	color: var(--vector-ink);
+	box-shadow: 0 0 12px rgba(120, 243, 255, 0.2);
+}
+
+.mobile-menu-btn svg {
+	width: 24px;
+	height: 24px;
+}
+
+/* Leaderboard styles */
+.leaderboard-overlay .panel {
+	max-width: 600px;
+}
+
+.tab-row {
+	display: flex;
+	gap: 8px;
+	margin: 12px 0;
+}
+
+.tab {
+	flex: 1;
+	padding: 10px 16px;
+	background: rgba(3, 7, 12, 0.7);
+	border: 1px solid var(--vector-line);
+	border-radius: 4px;
+	color: var(--vector-ink-soft);
+	font-size: 12px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	cursor: pointer;
+	transition: all 120ms ease;
+}
+
+.tab:hover,
+.tab.active {
+	border-color: var(--vector-ink);
+	color: var(--vector-ink-strong);
+	background: rgba(120, 243, 255, 0.1);
+}
+
+.tab.active {
+	box-shadow: 0 0 12px rgba(120, 243, 255, 0.25);
+}
+
+.leaderboard-card {
+	margin-top: 12px;
+}
+
+.leaderboard-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-top: 8px;
+	max-height: 300px;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+.leaderboard-row {
+	border: 1px solid var(--vector-line);
+	border-radius: 4px;
+	background: rgba(3, 7, 12, 0.5);
+	overflow: hidden;
+}
+
+.leaderboard-row.expanded {
+	border-color: var(--vector-ink);
+}
+
+.leaderboard-row-main {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 12px;
+	background: transparent;
+	border: none;
+	text-align: left;
+	cursor: pointer;
+}
+
+.leaderboard-row-main:disabled {
+	cursor: default;
+	opacity: 0.5;
+}
+
+.run-details {
+	padding: 10px 12px;
+	border-top: 1px solid var(--vector-line);
+	background: rgba(2, 5, 10, 0.6);
+}
+
+.run-details .pill-row {
+	margin-bottom: 10px;
+}
+
+.run-details .swatch-grid {
+	max-height: 200px;
+	overflow-y: auto;
+}
+
+/* Season card collapsible on mobile */
+.season-card {
+	margin-top: 16px;
+	background: rgba(3, 8, 14, 0.6);
+	border: 1px solid var(--vector-line);
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+.season-header {
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 6px;
+	padding: 12px;
+	background: transparent;
+	border: none;
+	text-align: left;
+	cursor: default;
+	position: relative;
+}
+
+.season-header .expand-icon {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	font-size: 10px;
+	color: var(--vector-ink-soft);
+}
+
+.season-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.season-details {
+	padding: 0 12px 12px;
+}
+
+.season-details .leaderboard-card {
+	margin-top: 10px;
+	padding: 10px;
+	background: rgba(2, 5, 10, 0.5);
+	border-radius: 4px;
+}
+
+/* Hero description */
+.hero-desc {
+	color: var(--vector-ink-soft);
+}
+
+/* Scrollbar styling for panels */
+.panel::-webkit-scrollbar,
+.leaderboard-list::-webkit-scrollbar,
+.run-details .swatch-grid::-webkit-scrollbar {
+	width: 6px;
+}
+
+.panel::-webkit-scrollbar-track,
+.leaderboard-list::-webkit-scrollbar-track,
+.run-details .swatch-grid::-webkit-scrollbar-track {
+	background: rgba(120, 243, 255, 0.05);
+	border-radius: 3px;
+}
+
+.panel::-webkit-scrollbar-thumb,
+.leaderboard-list::-webkit-scrollbar-thumb,
+.run-details .swatch-grid::-webkit-scrollbar-thumb {
+	background: rgba(120, 243, 255, 0.3);
+	border-radius: 3px;
+}
+
+.panel::-webkit-scrollbar-thumb:hover,
+.leaderboard-list::-webkit-scrollbar-thumb:hover,
+.run-details .swatch-grid::-webkit-scrollbar-thumb:hover {
+	background: rgba(120, 243, 255, 0.5);
 }

@@ -60,6 +60,30 @@ export const TouchControls = () => {
 		};
 	}, []);
 
+	const getOrigin = (side: StickSide) => {
+		const ref = side === "left" ? leftBaseRef.current : rightBaseRef.current;
+		if (!ref) return { x: 0, y: 0 };
+		const rect = ref.getBoundingClientRect();
+		return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+	};
+
+	const updateStick = (side: StickSide, clientX: number, clientY: number) => {
+		const pointerId =
+			side === "left" ? leftPointerId.current : rightPointerId.current;
+		if (pointerId === null) return;
+		const origin = side === "left" ? leftOrigin.current : rightOrigin.current;
+		const { x, y, magnitude } = clampStick(
+			clientX - origin.x,
+			clientY - origin.y,
+		);
+		const state = { active: magnitude > 0.01, x, y, magnitude };
+		if (side === "left") {
+			updateLeftStick(state);
+		} else {
+			updateRightStick(state);
+		}
+	};
+
 	useEffect(() => {
 		const handleMove = (ev: PointerEvent) => {
 			if (ev.pointerId === leftPointerId.current) {
@@ -85,16 +109,9 @@ export const TouchControls = () => {
 			window.removeEventListener("pointerup", handleEnd);
 			window.removeEventListener("pointercancel", handleEnd);
 		};
-	}, [releaseLeftStick, releaseRightStick]);
+	}, [releaseLeftStick, releaseRightStick, updateStick]);
 
 	if (!isMobile || screen !== "inGame" || upgradeOpen || pauseOpen) return null;
-
-	const getOrigin = (side: StickSide) => {
-		const ref = side === "left" ? leftBaseRef.current : rightBaseRef.current;
-		if (!ref) return { x: 0, y: 0 };
-		const rect = ref.getBoundingClientRect();
-		return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-	};
 
 	const beginStick = (
 		side: StickSide,
@@ -114,23 +131,6 @@ export const TouchControls = () => {
 		}
 		(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
 		updateStick(side, ev.clientX, ev.clientY);
-	};
-
-	const updateStick = (side: StickSide, clientX: number, clientY: number) => {
-		const pointerId =
-			side === "left" ? leftPointerId.current : rightPointerId.current;
-		if (pointerId === null) return;
-		const origin = side === "left" ? leftOrigin.current : rightOrigin.current;
-		const { x, y, magnitude } = clampStick(
-			clientX - origin.x,
-			clientY - origin.y,
-		);
-		const state = { active: magnitude > 0.01, x, y, magnitude };
-		if (side === "left") {
-			updateLeftStick(state);
-		} else {
-			updateRightStick(state);
-		}
 	};
 
 	const endStick = (side: StickSide, ev: ReactPointerEvent<HTMLDivElement>) => {

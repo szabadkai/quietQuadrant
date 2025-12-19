@@ -27,3 +27,21 @@ dist-ssr
 # Environment variables
 .env
 .env.local
+
+# Electron build output
+release/
+
+# Capacitor - Android
+android/app/build/
+android/.gradle/
+android/build/
+android/local.properties
+android/*.iml
+android/.idea/
+
+# Capacitor - iOS
+ios/App/Pods/
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+ios/DerivedData/
+*.xcuserstate

@@ -1,17 +1,43 @@
 {
-    "name": "quiet-quad",
+    "name": "quiet-quadrant",
     "private": true,
-    "version": "0.0.0",
+    "version": "1.0.0",
+    "description": "A twin-stick shooter roguelike",
+    "author": "Your Name",
     "type": "module",
+    "main": "electron/main.cjs",
     "scripts": {
         "dev": "vite --host",
         "build": "tsc -b && vite build",
+        "build:pages": "tsc -b && BUILD_TARGET=pages vite build",
         "lint": "eslint .",
         "preview": "vite preview",
         "test": "vitest --run",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:5173 && NODE_ENV=development electron .\"",
+        "electron:build": "npm run build && electron-builder",
+        "electron:build:win": "npm run build && electron-builder --win",
+        "electron:build:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
+        "electron:build:linux": "npm run build && electron-builder --linux",
+        "electron:build:all": "npm run build && electron-builder --win --mac --linux",
+        "cap:sync": "npm run build && npx cap sync",
+        "cap:android": "npm run build && npx cap sync android && npx cap open android",
+        "cap:ios": "npm run build && npx cap sync ios && npx cap open ios",
+        "cap:build:android": "npm run build && npx cap sync android && cd android && ./gradlew assembleRelease",
+        "cap:build:ios": "npm run build && npx cap sync ios",
+        "cap:icons": "node scripts/generate-mobile-icons.js",
+        "generate:splash": "node scripts/generate-splash-screens.cjs",
+        "generate:icons": "node scripts/generate-icons.cjs"
     },
     "dependencies": {
+        "@capacitor/android": "^8.0.0",
+        "@capacitor/cli": "^8.0.0",
+        "@capacitor/core": "^8.0.0",
+        "@capacitor/ios": "^8.0.0",
+        "@capacitor/screen-orientation": "^8.0.0",
+        "@capacitor/splash-screen": "^8.0.0",
+        "@capacitor/status-bar": "^8.0.0",
+        "electron-squirrel-startup": "^1.0.1",
         "phaser": "^3.90.0",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
@@ -25,13 +51,86 @@
         "@types/react-dom": "^19.2.3",
         "@vitejs/plugin-basic-ssl": "^2.1.0",
         "@vitejs/plugin-react": "^5.1.1",
+        "concurrently": "^9.2.1",
+        "electron": "^39.2.7",
+        "electron-builder": "^26.0.12",
         "eslint": "^9.39.1",
         "eslint-plugin-react-hooks": "^7.0.1",
         "eslint-plugin-react-refresh": "^0.4.24",
         "globals": "^16.5.0",
+        "png-to-ico": "^3.0.1",
+        "sharp": "^0.34.5",
         "typescript": "~5.9.3",
         "typescript-eslint": "^8.46.4",
         "vite": "^7.2.4",
-        "vitest": "^4.0.15"
+        "vitest": "^4.0.15",
+        "wait-on": "^9.0.3"
+    },
+    "build": {
+        "appId": "com.quietquadrant.game",
+        "productName": "Quiet Quadrant",
+        "directories": {
+            "output": "release"
+        },
+        "files": [
+            "dist/**/*",
+            "electron/**/*",
+            "build-resources/**/*"
+        ],
+        "win": {
+            "target": [
+                {
+                    "target": "nsis",
+                    "arch": [
+                        "x64"
+                    ]
+                },
+                {
+                    "target": "portable",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ],
+            "icon": "build-resources/icon.ico"
+        },
+        "mac": {
+            "target": [
+                {
+                    "target": "dmg",
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
+                }
+            ],
+            "icon": "build-resources/icon.icns",
+            "category": "public.app-category.games",
+            "identity": null
+        },
+        "linux": {
+            "target": [
+                {
+                    "target": "AppImage",
+                    "arch": [
+                        "x64"
+                    ]
+                },
+                {
+                    "target": "deb",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ],
+            "icon": "build-resources",
+            "category": "Game"
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true,
+            "installerIcon": "build-resources/icon.ico",
+            "uninstallerIcon": "build-resources/icon.ico"
+        }
     }
 }
