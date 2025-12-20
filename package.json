@@ -1,7 +1,7 @@
 {
     "name": "quiet-quadrant",
     "private": true,
-    "version": "1.6.5",
+    "version": "1.6.6",
     "description": "A twin-stick shooter roguelike",
     "author": {
         "name": "Levente Szabadkai",
