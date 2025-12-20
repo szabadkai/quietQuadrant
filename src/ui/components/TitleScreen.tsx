@@ -59,8 +59,12 @@ export const TitleScreen = () => {
 	// Check if we're on mobile
 	const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
 
+	// Build version injected by Vite
+	const buildVersion = typeof __BUILD_VERSION__ !== "undefined" ? __BUILD_VERSION__ : "dev";
+
 	return (
 		<div className="overlay title-screen">
+			<span className="build-version">v{buildVersion}</span>
 			<div className="panel hero">
 				<div className="eyebrow">Quiet Quadrant</div>
 				<h1>One ship. One quadrant. Stay alive.</h1>
