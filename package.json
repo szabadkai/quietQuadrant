@@ -3,7 +3,10 @@
     "private": true,
     "version": "1.6.0",
     "description": "A twin-stick shooter roguelike",
-    "author": "Your Name",
+    "author": {
+        "name": "Levente Szabadkai",
+        "email": "levente@szabadkai.com"
+    },
     "type": "module",
     "main": "electron/main.cjs",
     "scripts": {
