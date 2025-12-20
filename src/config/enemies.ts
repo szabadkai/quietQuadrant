@@ -3,53 +3,53 @@ import type { EnemyDefinition, EnemyKind } from "../models/types";
 const base: Record<EnemyKind, EnemyDefinition> = {
     drifter: {
         kind: "drifter",
-        speed: 100, // Reduced from 110 (-9%)
-        health: 22, // Reduced from 28 (-21%)
-        damage: 12, // Reduced from 15 (-20%)
+        speed: 100,
+        health: 22,
+        damage: 1, // Contact damage - 1 HP per hit
     },
     watcher: {
         kind: "watcher",
-        speed: 65, // Reduced from 70 (-7%)
-        health: 35, // Reduced from 42 (-17%)
-        damage: 14, // Reduced from 18 (-22%)
-        fireCooldown: 1.8, // Increased from 1.6 (slower firing)
-        projectileSpeed: 145, // Reduced from 160 (-9%)
+        speed: 65,
+        health: 35,
+        damage: 1, // Projectile damage - 1 HP per hit
+        fireCooldown: 1.8,
+        projectileSpeed: 145,
     },
     mass: {
         kind: "mass",
-        speed: 40, // Reduced from 45 (-11%)
-        health: 85, // Reduced from 105 (-19%)
-        damage: 28, // Reduced from 35 (-20%)
-        fireCooldown: 2.8, // Increased from 2.6 (slower firing)
-        projectileSpeed: 110, // Reduced from 120 (-8%)
+        speed: 40,
+        health: 85,
+        damage: 2, // Heavier enemy - 2 HP per hit
+        fireCooldown: 2.8,
+        projectileSpeed: 110,
     },
     phantom: {
         kind: "phantom",
-        speed: 80, // Moderate base speed
-        health: 18, // Fragile but evasive
-        damage: 15,
+        speed: 80,
+        health: 18,
+        damage: 1,
     },
     orbiter: {
         kind: "orbiter",
-        speed: 120, // Fast orbital speed
+        speed: 120,
         health: 28,
-        damage: 10,
+        damage: 1,
         fireCooldown: 2.2,
         projectileSpeed: 130,
     },
     splitter: {
         kind: "splitter",
         speed: 55,
-        health: 50, // Moderate health, splits on death
-        damage: 18,
+        health: 50,
+        damage: 1,
     },
     boss: {
         kind: "boss",
-        speed: 55, // Reduced from 60 (-8%)
-        health: 1200, // Reduced from 1500 (-20%)
-        damage: 28, // Reduced from 35 (-20%)
-        fireCooldown: 0.9, // Increased from 0.8 (slower firing)
-        projectileSpeed: 280, // Reduced from 320 (-12%)
+        speed: 55,
+        health: 800,
+        damage: 1, // Boss projectiles do 1 HP, but there are many of them
+        fireCooldown: 1.0,
+        projectileSpeed: 220,
     },
 };
 
