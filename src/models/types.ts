@@ -142,4 +142,44 @@ export interface WeeklyAffix {
     bossProjectileSpeedMultiplier?: number;
 }
 
+export interface LifetimeStats {
+    // Core stats
+    totalRuns: number;
+    totalPlaytimeSeconds: number;
+    totalEnemiesDestroyed: number;
+    totalWavesCleared: number;
+    totalBossesDefeated: number;
+    totalVictories: number;
+    totalDeaths: number;
+
+    // Streaks
+    currentWinStreak: number;
+    bestWinStreak: number;
+    currentDailyStreak: number;
+    bestDailyStreak: number;
+    lastPlayedDate: string; // ISO date string YYYY-MM-DD
+
+    // Records
+    highestWave: number;
+    fastestVictorySeconds: number;
+    mostEnemiesInRun: number;
+    mostUpgradesInRun: number;
+
+    // Upgrade tracking
+    upgradePickCounts: Record<string, number>; // How many times each upgrade was picked
+    synergyUnlockCounts: Record<string, number>; // How many times each synergy was achieved
+
+    // Boss tracking
+    bossKillCounts: Record<string, number>; // Kills per boss type
+    bossEncounterCounts: Record<string, number>; // Encounters per boss type
+
+    // Affix tracking
+    affixPlayCounts: Record<string, number>; // Runs per affix
+    affixWinCounts: Record<string, number>; // Wins per affix
+
+    // Mode tracking
+    modePlayCounts: Record<string, number>; // Runs per mode
+    modeWinCounts: Record<string, number>; // Wins per mode
+}
+
 export type PerSeedBest = Record<string, RunSummary>;

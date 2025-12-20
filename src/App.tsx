@@ -13,6 +13,7 @@ import { HowToPlay } from "./ui/components/HowToPlay";
 import { HUD } from "./ui/components/HUD";
 import { PauseMenu } from "./ui/components/PauseMenu";
 import { SummaryScreen } from "./ui/components/SummaryScreen";
+import { StatsScreen } from "./ui/components/StatsScreen";
 import { TitleScreen } from "./ui/components/TitleScreen";
 import { TwinSetup } from "./ui/components/TwinSetup";
 import { MultiplayerSetup } from "./ui/components/MultiplayerSetup";
@@ -162,6 +163,7 @@ function App() {
 			{screen === "title" && <TitleScreen />}
 			{screen === "howToPlay" && <HowToPlay />}
 			{screen === "summary" && <SummaryScreen />}
+			{screen === "stats" && <StatsScreen />}
 			{screen === "twinSetup" && <TwinSetup />}
 			{screen === "multiplayerSetup" && <MultiplayerSetup />}
 			{screen === "hostGame" && <HostGame />}

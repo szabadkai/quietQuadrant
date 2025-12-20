@@ -43,6 +43,7 @@ export const TitleScreen = () => {
 	const randomRef = useRef<HTMLButtonElement>(null);
 	const twinRef = useRef<HTMLButtonElement>(null);
 	const infiniteRef = useRef<HTMLButtonElement>(null);
+	const statsRef = useRef<HTMLButtonElement>(null);
 	const howToRef = useRef<HTMLButtonElement>(null);
 
 	const nav = useMenuNavigation(
@@ -51,6 +52,7 @@ export const TitleScreen = () => {
 			{ ref: randomRef, onActivate: startRandom },
 			{ ref: twinRef, onActivate: startTwin },
 			{ ref: infiniteRef, onActivate: startInfinite },
+			{ ref: statsRef, onActivate: () => setScreen("stats") },
 			{ ref: howToRef, onActivate: () => setScreen("howToPlay") },
 		],
 		{ enabled: true, columns: 1, onBack: undefined },
@@ -107,9 +109,17 @@ export const TitleScreen = () => {
 						Infinite Mode
 					</button>
 					<button
-						ref={howToRef}
+						ref={statsRef}
 						tabIndex={0}
 						className={`ghost ${nav.focusedIndex === 4 ? "nav-focused" : ""}`}
+						onClick={() => setScreen("stats")}
+					>
+						Stats
+					</button>
+					<button
+						ref={howToRef}
+						tabIndex={0}
+						className={`ghost ${nav.focusedIndex === 5 ? "nav-focused" : ""}`}
 						onClick={() => setScreen("howToPlay")}
 					>
 						How to Play

@@ -8,7 +8,8 @@ export type UIScreen =
     | "twinSetup"
     | "multiplayerSetup"
     | "hostGame"
-    | "joinGame";
+    | "joinGame"
+    | "stats";
 
 interface UIState {
     screen: UIScreen;
