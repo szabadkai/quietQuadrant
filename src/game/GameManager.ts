@@ -9,6 +9,7 @@ import type {
 } from "../models/types";
 import { getWeeklySeed, hashSeed, Prng, pickFromList } from "../utils/seed";
 import { createGameConfig } from "./GameConfig";
+import { BootScene } from "./scenes/BootScene";
 import { MainScene } from "./scenes/MainScene";
 
 class GameManager {
@@ -24,8 +25,12 @@ class GameManager {
 
     init(containerId: string) {
         if (this.game) return;
+        const bootScene = new BootScene();
         this.mainScene = new MainScene();
-        const config = createGameConfig(containerId, [this.mainScene]);
+        const config = createGameConfig(containerId, [
+            bootScene,
+            this.mainScene,
+        ]);
         this.game = new Phaser.Game(config);
     }
 
@@ -99,11 +104,6 @@ class GameManager {
     applyUpgrade(id: string) {
         if (!this.game) return;
         this.mainScene?.applyUpgrade(id);
-    }
-
-    setLowGraphicsMode(enabled: boolean) {
-        if (!this.game) return;
-        this.mainScene?.setLowGraphicsMode(enabled);
     }
 
     debugSetWave(waveNumber: number) {

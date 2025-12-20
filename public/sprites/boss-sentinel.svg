@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+    <!-- Outer shell -->
+    <ellipse cx="32" cy="32" rx="29" ry="20" fill="#180c13" stroke="#f14e4e" stroke-width="4" />
+    <!-- Inner shell -->
+    <ellipse cx="32" cy="32" rx="23" ry="14" fill="#2a0f18" />
+    <!-- Eye area -->
+    <ellipse cx="32" cy="32" rx="16" ry="9" fill="#f14e4e" opacity="0.8" />
+    <!-- Eye -->
+    <circle cx="34" cy="30" r="6" fill="#fafafa" />
+    <circle cx="36" cy="30" r="3" fill="#0b0f13" />
+    <!-- Left horn -->
+    <path d="M2,22 L14,8 L22,26" fill="none" stroke="#f14e4e" stroke-width="3" opacity="0.9" />
+    <!-- Right horn -->
+    <path d="M62,22 L50,8 L42,26" fill="none" stroke="#f14e4e" stroke-width="3" opacity="0.9" />
+</svg>

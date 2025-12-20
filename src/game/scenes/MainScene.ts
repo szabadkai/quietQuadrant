@@ -223,7 +223,6 @@ export class MainScene extends Phaser.Scene {
     private enemies!: Phaser.Physics.Arcade.Group;
     private xpPickups!: Phaser.Physics.Arcade.Group;
     private playersGroup!: Phaser.Physics.Arcade.Group;
-    private lowGraphics = false;
     private starfieldLayers: {
         sprite: Phaser.GameObjects.TileSprite;
         velocityX: number;
@@ -413,9 +412,7 @@ export class MainScene extends Phaser.Scene {
 
     update(_: number, delta: number) {
         const dt = delta / 1000;
-        if (!this.lowGraphics) {
-            this.updateStarfield(dt);
-        }
+        this.updateStarfield(dt);
         if (!this.runActive || !this.playerState) return;
         const runStatus = useRunStore.getState().status;
         const activePilots = this.getActivePilots();
@@ -701,7 +698,7 @@ export class MainScene extends Phaser.Scene {
         useRunStore.getState().actions.unlockSynergy(id);
         const anchor =
             this.playerState?.sprite ?? this.playerTwoState?.sprite ?? null;
-        if (anchor && !this.lowGraphics) {
+        if (anchor) {
             this.spawnBurstVisual(
                 anchor.x,
                 anchor.y,
@@ -713,192 +710,12 @@ export class MainScene extends Phaser.Scene {
     }
 
     private setupVisuals() {
-        this.lowGraphics = useMetaStore.getState().settings.lowGraphicsMode;
         this.backgroundFxTargets = [];
         this.createStarfieldTextures();
         this.createStarfieldLayers();
-        this.syncStarfieldVisibility();
         this.createPlayfieldBackdrop();
         this.setupBossIntroOverlay();
-        this.createBossTextures();
-        this.createTexture("player", (g) => {
-            const c = 32;
-            g.fillStyle(0x0f1b2d, 1);
-            g.fillTriangle(c + 20, c, c - 12, c - 14, c - 12, c + 14);
-            g.lineStyle(2, 0x9ff0ff);
-            g.strokeTriangle(c + 20, c, c - 12, c - 14, c - 12, c + 14);
-            g.fillStyle(0x7ad1ff, 1);
-            g.fillTriangle(c + 6, c, c - 4, c - 6, c - 4, c + 6);
-            g.fillStyle(0x11344d, 1);
-            g.fillRect(c - 18, c - 8, 8, 4);
-            g.fillRect(c - 18, c + 4, 8, 4);
-            g.lineStyle(2, 0x9ff0ff, 0.9);
-            g.lineBetween(c - 12, c - 10, c + 4, c - 4);
-            g.lineBetween(c - 12, c + 10, c + 4, c + 4);
-            g.fillStyle(0x9ff0ff, 0.8);
-            g.fillRect(c - 6, c - 5, 10, 10);
-        });
-        this.createTexture("drifter", (g) => {
-            const c = 32;
-            g.lineStyle(3, 0xa8b0c2);
-            g.strokeCircle(c, c, 16);
-            g.lineStyle(2, 0x6dd6ff, 0.9);
-            g.strokeCircle(c, c, 11);
-            g.fillStyle(0x0d1a28, 1);
-            g.fillCircle(c, c, 9);
-            g.fillStyle(0x6dd6ff, 1);
-            g.fillCircle(c, c, 5);
-            g.fillStyle(0xa8b0c2, 1);
-            g.fillRect(c - 4, c + 14, 8, 10);
-            g.fillRect(c - 20, c - 2, 6, 10);
-            g.fillRect(c + 14, c - 2, 6, 10);
-        });
-        this.createTexture("watcher", (g) => {
-            const c = 32;
-            g.fillStyle(0x0f1626, 1);
-            g.fillRoundedRect(c - 16, c - 16, 32, 32, 6);
-            g.lineStyle(3, 0x8aa3e0);
-            g.strokeRoundedRect(c - 16, c - 16, 32, 32, 6);
-            g.lineStyle(2, 0x6dd6ff, 0.8);
-            g.lineBetween(c - 12, c, c + 12, c);
-            g.lineBetween(c, c - 12, c, c + 12);
-            g.fillStyle(0x6dd6ff, 1);
-            g.fillCircle(c, c, 7);
-            g.fillStyle(0x182744, 1);
-            g.fillCircle(c, c, 4);
-            g.fillStyle(0xf4f6fb, 0.8);
-            g.fillCircle(c + 3, c - 2, 2);
-        });
-        this.createTexture("mass", (g) => {
-            const c = 32;
-            const hull = [
-                { x: c, y: c - 20 },
-                { x: c + 18, y: c },
-                { x: c, y: c + 20 },
-                { x: c - 18, y: c },
-            ];
-            g.fillStyle(0x26120f, 1);
-            g.fillPoints(hull, true);
-            g.lineStyle(3, 0xe0a86f);
-            g.strokePoints(hull, true);
-            g.fillStyle(0x6b3a21, 1);
-            g.fillRect(c - 6, c - 10, 12, 7);
-            g.lineStyle(2, 0xe0a86f, 0.8);
-            g.lineBetween(c - 10, c - 4, c + 10, c - 4);
-            g.lineBetween(c - 10, c + 4, c + 10, c + 4);
-        });
-        this.createTexture("boss", (g) => {
-            const c = 32;
-            g.fillStyle(0x180c13, 1);
-            g.fillEllipse(c, c, 58, 40);
-            g.lineStyle(4, 0xf14e4e);
-            g.strokeEllipse(c, c, 58, 40);
-            g.fillStyle(0x2a0f18, 1);
-            g.fillEllipse(c, c, 46, 28);
-            g.fillStyle(0xf14e4e, 0.8);
-            g.fillEllipse(c, c, 32, 18);
-            g.fillStyle(0xfafafa, 1);
-            g.fillCircle(c + 2, c - 2, 6);
-            g.fillStyle(0x0b0f13, 1);
-            g.fillCircle(c + 4, c - 2, 3);
-            g.lineStyle(3, 0xf14e4e, 0.9);
-            g.beginPath();
-            g.moveTo(c - 30, c - 10);
-            g.lineTo(c - 18, c - 24);
-            g.lineTo(c - 10, c - 6);
-            g.strokePath();
-            g.beginPath();
-            g.moveTo(c + 30, c - 10);
-            g.lineTo(c + 18, c - 24);
-            g.lineTo(c + 10, c - 6);
-            g.strokePath();
-        });
-        this.createTexture("bullet", (g) => {
-            const c = 32;
-            g.fillStyle(0xfafafa, 1);
-            g.fillRoundedRect(c - 2, c - 12, 4, 18, 2);
-            g.fillStyle(0x9ff0ff, 0.8);
-            g.fillRoundedRect(c - 1, c - 14, 2, 6, 1);
-        });
-        this.createTexture("enemy-bullet", (g) => {
-            const c = 32;
-            g.fillStyle(0xf14e4e);
-            g.fillRoundedRect(c - 2, c - 10, 4, 16, 2);
-            g.fillStyle(0xffc2c2, 0.8);
-            g.fillRoundedRect(c - 1, c - 12, 2, 5, 1);
-        });
-        this.createTexture("xp", (g) => {
-            const c = 32;
-            const gem = [
-                { x: c, y: c - 8 },
-                { x: c + 6, y: c },
-                { x: c, y: c + 8 },
-                { x: c - 6, y: c },
-            ];
-            g.fillStyle(0x6dd6ff, 1);
-            g.fillPoints(gem, true);
-            g.lineStyle(2, 0x9ff0ff, 0.9);
-            g.strokePoints(gem, true);
-            g.fillStyle(0xf4f6fb, 0.9);
-            g.fillTriangle(c - 1, c - 4, c + 3, c, c - 1, c + 4);
-        });
-
-        // Create enhanced elite enemy textures (Requirements 6.1, 6.3, 6.5)
-        this.createTexture("elite-drifter", (g) => {
-            const c = 32;
-            // Base drifter shape with enhanced effects
-            g.lineStyle(4, 0xff6b47); // Thicker, more menacing outline
-            g.strokeCircle(c, c, 16);
-            g.lineStyle(3, 0xff9966, 0.9);
-            g.strokeCircle(c, c, 11);
-            g.fillStyle(0x2a0f0a, 1); // Darker core
-            g.fillCircle(c, c, 9);
-            g.fillStyle(0xff6b47, 1); // Bright threat color
-            g.fillCircle(c, c, 5);
-            // Enhanced threat spikes
-            g.fillStyle(0xff6b47, 1);
-            g.fillRect(c - 4, c + 14, 8, 12);
-            g.fillRect(c - 22, c - 2, 8, 10);
-            g.fillRect(c + 14, c - 2, 8, 10);
-        });
-
-        this.createTexture("elite-watcher", (g) => {
-            const c = 32;
-            // Enhanced watcher with more aggressive appearance
-            g.fillStyle(0x1a0f0f, 1);
-            g.fillRoundedRect(c - 16, c - 16, 32, 32, 6);
-            g.lineStyle(4, 0xff6b47); // Threat color outline
-            g.strokeRoundedRect(c - 16, c - 16, 32, 32, 6);
-            g.lineStyle(3, 0xff9966, 0.8);
-            g.lineBetween(c - 12, c, c + 12, c);
-            g.lineBetween(c, c - 12, c, c + 12);
-            g.fillStyle(0xff6b47, 1);
-            g.fillCircle(c, c, 8); // Larger, more menacing eye
-            g.fillStyle(0x2a0f0a, 1);
-            g.fillCircle(c, c, 5);
-            g.fillStyle(0xff9966, 0.9);
-            g.fillCircle(c + 3, c - 2, 3); // Brighter glint
-        });
-
-        this.createTexture("elite-mass", (g) => {
-            const c = 32;
-            // Enhanced mass with spikier, more threatening appearance
-            const hull = [
-                { x: c, y: c - 22 }, // Taller spikes
-                { x: c + 20, y: c },
-                { x: c, y: c + 22 },
-                { x: c - 20, y: c },
-            ];
-            g.fillStyle(0x2a0f0a, 1);
-            g.fillPoints(hull, true);
-            g.lineStyle(4, 0xff6b47); // Thicker threat outline
-            g.strokePoints(hull, true);
-            g.fillStyle(0x4a1f0f, 1);
-            g.fillRect(c - 6, c - 12, 12, 9);
-            g.lineStyle(3, 0xff9966, 0.8);
-            g.lineBetween(c - 12, c - 4, c + 12, c - 4);
-            g.lineBetween(c - 12, c + 4, c + 12, c + 4);
-        });
+        // Sprite textures are now loaded from SVG files in BootScene
     }
 
     private createStarfieldTextures() {
@@ -1010,7 +827,6 @@ export class MainScene extends Phaser.Scene {
     private registerBackgroundFxTarget(
         obj: Phaser.GameObjects.GameObject
     ): Phaser.FX.ColorMatrix | null {
-        if (this.lowGraphics) return null;
         const fxComponent = (
             obj as unknown as { postFX?: Phaser.GameObjects.Components.FX }
         ).postFX;
@@ -1036,87 +852,6 @@ export class MainScene extends Phaser.Scene {
         this.registerBackgroundFxTarget(this.playfieldBackdrop);
     }
 
-    private createBossTextures() {
-        // Sentinel: keep the existing elliptical red core
-        this.createTexture("boss-sentinel", (g) => {
-            const c = 32;
-            g.fillStyle(0x180c13, 1);
-            g.fillEllipse(c, c, 58, 40);
-            g.lineStyle(4, 0xf14e4e);
-            g.strokeEllipse(c, c, 58, 40);
-            g.fillStyle(0x2a0f18, 1);
-            g.fillEllipse(c, c, 46, 28);
-            g.fillStyle(0xf14e4e, 0.8);
-            g.fillEllipse(c, c, 32, 18);
-            g.fillStyle(0xfafafa, 1);
-            g.fillCircle(c + 2, c - 2, 6);
-            g.fillStyle(0x0b0f13, 1);
-            g.fillCircle(c + 4, c - 2, 3);
-            g.lineStyle(3, 0xf14e4e, 0.9);
-            g.beginPath();
-            g.moveTo(c - 30, c - 10);
-            g.lineTo(c - 18, c - 24);
-            g.lineTo(c - 10, c - 6);
-            g.strokePath();
-            g.beginPath();
-            g.moveTo(c + 30, c - 10);
-            g.lineTo(c + 18, c - 24);
-            g.lineTo(c + 10, c - 6);
-            g.strokePath();
-        });
-
-        // Swarm Core: hexagon chassis with emerald glow
-        this.createTexture("boss-swarm-core", (g) => {
-            const c = 32;
-            const hull = [
-                { x: c, y: c - 26 },
-                { x: c + 22, y: c - 13 },
-                { x: c + 22, y: c + 13 },
-                { x: c, y: c + 26 },
-                { x: c - 22, y: c + 13 },
-                { x: c - 22, y: c - 13 },
-            ];
-            g.fillStyle(0x0e1811, 1);
-            g.fillPoints(hull, true);
-            g.lineStyle(4, 0x7de36f);
-            g.strokePoints(hull, true);
-            g.fillStyle(0x15321b, 1);
-            g.fillEllipse(c, c, 30, 22);
-            g.lineStyle(3, 0x9df07f, 0.9);
-            g.strokeEllipse(c, c, 28, 18);
-            g.fillStyle(0xb7ff99, 0.9);
-            g.fillCircle(c, c, 10);
-            g.fillStyle(0x1c3c22, 1);
-            g.fillCircle(c, c, 5);
-            g.lineStyle(2, 0xb7ff99, 0.8);
-            g.lineBetween(c - 16, c, c + 16, c);
-            g.lineBetween(c, c - 12, c, c + 12);
-        });
-
-        // Obelisk: tall monolith with violet runes
-        this.createTexture("boss-obelisk", (g) => {
-            const c = 32;
-            g.fillStyle(0x0f0c18, 1);
-            g.fillRoundedRect(c - 16, c - 30, 32, 60, 6);
-            g.lineStyle(4, 0x9d7bff);
-            g.strokeRoundedRect(c - 16, c - 30, 32, 60, 6);
-            g.fillStyle(0x1c1132, 1);
-            g.fillRoundedRect(c - 10, c - 20, 20, 40, 4);
-            g.lineStyle(3, 0xcab7ff, 0.95);
-            g.beginPath();
-            g.moveTo(c, c - 20);
-            g.lineTo(c + 12, c);
-            g.lineTo(c, c + 20);
-            g.lineTo(c - 12, c);
-            g.closePath();
-            g.strokePath();
-            g.fillStyle(0xcab7ff, 0.9);
-            g.fillCircle(c, c - 14, 4);
-            g.fillCircle(c, c, 5);
-            g.fillCircle(c, c + 14, 4);
-        });
-    }
-
     private setupBossIntroOverlay() {
         this.bossIntroOverlay?.destroy();
         const overlay = this.add
@@ -1133,17 +868,8 @@ export class MainScene extends Phaser.Scene {
             .setAlpha(0)
             .setBlendMode(Phaser.BlendModes.MULTIPLY);
         overlay.setVisible(false);
-        if (!this.lowGraphics) {
-            overlay.postFX.addVignette(0.5, 0.5, 0.9, 0.95);
-        }
+        overlay.postFX.addVignette(0.5, 0.5, 0.9, 0.95);
         this.bossIntroOverlay = overlay;
-    }
-
-    private syncStarfieldVisibility() {
-        const visible = !this.lowGraphics;
-        this.starfieldLayers.forEach((layer) =>
-            layer.sprite.setVisible(visible)
-        );
     }
 
     private updateStarfield(dt: number) {
@@ -1154,7 +880,7 @@ export class MainScene extends Phaser.Scene {
     }
 
     private applyBackgroundTone(saturationBoost: number, brightness: number) {
-        if (this.lowGraphics || this.backgroundFxTargets.length === 0) return;
+        if (this.backgroundFxTargets.length === 0) return;
         this.backgroundFxTargets.forEach((fx) => {
             fx.reset();
             fx.saturate(saturationBoost);
@@ -1167,7 +893,7 @@ export class MainScene extends Phaser.Scene {
             this.backgroundFxTween.stop();
             this.backgroundFxTween = undefined;
         }
-        if (this.lowGraphics || this.backgroundFxTargets.length === 0) {
+        if (this.backgroundFxTargets.length === 0) {
             this.cameras.main.flash(220, 255, 94, 94);
             return;
         }
@@ -1204,7 +930,7 @@ export class MainScene extends Phaser.Scene {
             );
             this.tweens.add({
                 targets: this.bossIntroOverlay,
-                alpha: { from: 0, to: this.lowGraphics ? 0.4 : 0.82 },
+                alpha: { from: 0, to: 0.82 },
                 duration: 180,
                 ease: "Quad.easeOut",
                 yoyo: true,
@@ -2073,9 +1799,7 @@ export class MainScene extends Phaser.Scene {
         ) {
             this.spawnPlayers();
         }
-        this.lowGraphics = settings.lowGraphicsMode;
         this.inputMode = "keyboardMouse";
-        this.syncStarfieldVisibility();
         this.backgroundFxTween?.stop();
         this.backgroundFxTween = undefined;
         this.applyBackgroundTone(0, 1);
@@ -2782,7 +2506,6 @@ export class MainScene extends Phaser.Scene {
         origin: Phaser.Math.Vector2,
         dir: Phaser.Math.Vector2
     ) {
-        if (this.lowGraphics) return;
         const length = 42 * OBJECT_SCALE;
         const width = 6 * OBJECT_SCALE;
         const angle = dir.angle();
@@ -2800,7 +2523,6 @@ export class MainScene extends Phaser.Scene {
     }
 
     private spawnMuzzleFlash(x: number, y: number) {
-        if (this.lowGraphics) return;
         const flash = this.add
             .circle(x, y, 10 * OBJECT_SCALE, COLOR_CHARGE, 0.35)
             .setDepth(2);
@@ -2820,7 +2542,6 @@ export class MainScene extends Phaser.Scene {
         color: number,
         strokeOpacity = 0.7
     ) {
-        if (this.lowGraphics) return;
         const circle = this.add
             .circle(x, y, radius, color, 0.08)
             .setStrokeStyle(2, color, strokeOpacity)
@@ -2837,7 +2558,6 @@ export class MainScene extends Phaser.Scene {
 
     private playCritFeedback(enemy: Phaser.Physics.Arcade.Image) {
         this.cameras.main.shake(80, 0.0025);
-        if (this.lowGraphics) return;
         const flash = this.add
             .circle(enemy.x, enemy.y, 16 * OBJECT_SCALE, COLOR_OVERLOAD, 0.65)
             .setDepth(1.1);
@@ -3053,9 +2773,7 @@ export class MainScene extends Phaser.Scene {
         const explosionDamage = (enemy.getData("damage") as number) || 25;
 
         // Create visual explosion effect
-        if (!this.lowGraphics) {
-            this.spawnBurstVisual(x, y, explosionRadius, 0xff4444, 1.0);
-        }
+        this.spawnBurstVisual(x, y, explosionRadius, 0xff4444, 1.0);
 
         // Apply damage to nearby players
         const pilots = this.getActivePilots();
@@ -3726,15 +3444,13 @@ export class MainScene extends Phaser.Scene {
         } else {
             playerBullet.destroy();
         }
-        if (!this.lowGraphics) {
-            this.spawnBurstVisual(
-                playerBullet.x,
-                playerBullet.y,
-                18 * OBJECT_SCALE,
-                COLOR_OVERLOAD,
-                0.6
-            );
-        }
+        this.spawnBurstVisual(
+            playerBullet.x,
+            playerBullet.y,
+            18 * OBJECT_SCALE,
+            COLOR_OVERLOAD,
+            0.6
+        );
     }
 
     private handleBulletHitEnemy = (
@@ -3895,9 +3611,7 @@ export class MainScene extends Phaser.Scene {
                 });
             }
         });
-        if (!this.lowGraphics) {
-            this.spawnBurstVisual(x, y, radius * 0.7, COLOR_OVERLOAD, 0.7);
-        }
+        this.spawnBurstVisual(x, y, radius * 0.7, COLOR_OVERLOAD, 0.7);
     }
 
     private applyBloodFuelHeal() {
@@ -3930,15 +3644,13 @@ export class MainScene extends Phaser.Scene {
             body.velocity.x += dirX * strength * pullScale;
             body.velocity.y += dirY * strength * pullScale;
         });
-        if (!this.lowGraphics) {
-            this.spawnBurstVisual(
-                center.x,
-                center.y,
-                radius * 0.5,
-                COLOR_CHARGE,
-                0.45
-            );
-        }
+        this.spawnBurstVisual(
+            center.x,
+            center.y,
+            radius * 0.5,
+            COLOR_CHARGE,
+            0.45
+        );
     }
 
     private tryChainArc(origin: Phaser.Physics.Arcade.Image) {
@@ -3970,26 +3682,24 @@ export class MainScene extends Phaser.Scene {
         const damage =
             this.playerStats.damage * this.chainArcConfig.damagePercent;
         this.applyDamageToEnemy(target, damage, undefined, { tags: ["arc"] });
-        if (!this.lowGraphics) {
-            const line = this.add
-                .line(
-                    0,
-                    0,
-                    origin.x,
-                    origin.y,
-                    target.x,
-                    target.y,
-                    COLOR_PULSE,
-                    0.7
-                )
-                .setLineWidth(2);
-            this.tweens.add({
-                targets: line,
-                alpha: { from: 0.7, to: 0 },
-                duration: 150,
-                onComplete: () => line.destroy(),
-            });
-        }
+        const line = this.add
+            .line(
+                0,
+                0,
+                origin.x,
+                origin.y,
+                target.x,
+                target.y,
+                COLOR_PULSE,
+                0.7
+            )
+            .setLineWidth(2);
+        this.tweens.add({
+            targets: line,
+            alpha: { from: 0.7, to: 0 },
+            duration: 150,
+            onComplete: () => line.destroy(),
+        });
     }
 
     private handleProjectileBounds() {
@@ -4189,30 +3899,28 @@ export class MainScene extends Phaser.Scene {
             pilot.shield.activeUntil = now + this.shieldConfig.durationMs;
             pilot.shield.hp = this.shieldConfig.shieldHp;
             pilot.shield.nextReadyAt = this.shieldConfig.nextReadyAt;
-            if (!this.lowGraphics) {
-                if (!pilot.shieldRing) {
-                    pilot.shieldRing = this.add
-                        .circle(
-                            pilot.sprite.x,
-                            pilot.sprite.y,
-                            26 * OBJECT_SCALE,
-                            COLOR_PULSE,
-                            0.06
-                        )
-                        .setStrokeStyle(3, COLOR_PULSE, 0.8)
-                        .setDepth(1.5);
-                }
-                pilot.shieldRing.setVisible(true);
-                pilot.shieldRing.setAlpha(0.8);
-                pilot.shieldRing.setPosition(pilot.sprite.x, pilot.sprite.y);
-                this.spawnBurstVisual(
-                    pilot.sprite.x,
-                    pilot.sprite.y,
-                    30 * OBJECT_SCALE,
-                    COLOR_PULSE,
-                    0.9
-                );
+            if (!pilot.shieldRing) {
+                pilot.shieldRing = this.add
+                    .circle(
+                        pilot.sprite.x,
+                        pilot.sprite.y,
+                        26 * OBJECT_SCALE,
+                        COLOR_PULSE,
+                        0.06
+                    )
+                    .setStrokeStyle(3, COLOR_PULSE, 0.8)
+                    .setDepth(1.5);
             }
+            pilot.shieldRing.setVisible(true);
+            pilot.shieldRing.setAlpha(0.8);
+            pilot.shieldRing.setPosition(pilot.sprite.x, pilot.sprite.y);
+            this.spawnBurstVisual(
+                pilot.sprite.x,
+                pilot.sprite.y,
+                30 * OBJECT_SCALE,
+                COLOR_PULSE,
+                0.9
+            );
         };
         activate(this.playerState);
         if (this.runMode === "twin" || this.runMode === "online") {
@@ -5136,35 +4844,33 @@ export class MainScene extends Phaser.Scene {
             enemy.setTint(0xff6b47); // Bright orange-red tint for threat indication
 
             // Add pulsing glow effect for elite enemies
-            if (!this.lowGraphics) {
-                const glowRing = this.add
-                    .arc(
-                        enemy.x,
-                        enemy.y,
-                        32 * OBJECT_SCALE,
-                        0,
-                        360,
-                        false,
-                        0xff6b47,
-                        0.15
-                    )
-                    .setStrokeStyle(2, 0xff6b47, 0.6)
-                    .setDepth(0.3);
+            const glowRing = this.add
+                .arc(
+                    enemy.x,
+                    enemy.y,
+                    32 * OBJECT_SCALE,
+                    0,
+                    360,
+                    false,
+                    0xff6b47,
+                    0.15
+                )
+                .setStrokeStyle(2, 0xff6b47, 0.6)
+                .setDepth(0.3);
 
-                // Store glow ring reference on enemy for cleanup
-                enemy.setData("eliteGlow", glowRing);
+            // Store glow ring reference on enemy for cleanup
+            enemy.setData("eliteGlow", glowRing);
 
-                // Pulsing animation for elite glow
-                this.tweens.add({
-                    targets: glowRing,
-                    alpha: { from: 0.6, to: 0.2 },
-                    scale: { from: 0.9, to: 1.1 },
-                    duration: 800,
-                    yoyo: true,
-                    repeat: -1,
-                    ease: "Sine.easeInOut",
-                });
-            }
+            // Pulsing animation for elite glow
+            this.tweens.add({
+                targets: glowRing,
+                alpha: { from: 0.6, to: 0.2 },
+                scale: { from: 0.9, to: 1.1 },
+                duration: 800,
+                yoyo: true,
+                repeat: -1,
+                ease: "Sine.easeInOut",
+            });
         } else {
             enemy.clearTint();
         }
@@ -5290,31 +4996,18 @@ export class MainScene extends Phaser.Scene {
             soundManager.playSfx("playerHit");
 
             // Flash a blue shield ring to indicate deflection
-            if (!this.lowGraphics) {
-                this.spawnBurstVisual(
-                    pilot.sprite.x,
-                    pilot.sprite.y,
-                    36 * OBJECT_SCALE,
-                    COLOR_ACCENT,
-                    0.9
-                );
-            }
+            this.spawnBurstVisual(
+                pilot.sprite.x,
+                pilot.sprite.y,
+                36 * OBJECT_SCALE,
+                COLOR_ACCENT,
+                0.9
+            );
         }
 
         if (this.playerStats.health <= 0) {
             this.endRun(false);
         }
-    }
-
-    private createTexture(
-        key: string,
-        draw: (g: Phaser.GameObjects.Graphics) => void
-    ) {
-        if (this.textures.exists(key)) return;
-        const g = this.add.graphics({ x: 0, y: 0 });
-        draw(g);
-        g.generateTexture(key, 64, 64);
-        g.destroy();
     }
 
     private pickPerimeterSpawn() {
@@ -5524,32 +5217,30 @@ export class MainScene extends Phaser.Scene {
                     // Apply elite visual effects
                     if (spawnData.elite) {
                         newEnemy.setTint(0xff6b47);
-                        if (!this.lowGraphics) {
-                            const glowRing = this.add
-                                .arc(
-                                    newEnemy.x,
-                                    newEnemy.y,
-                                    32 * OBJECT_SCALE,
-                                    0,
-                                    360,
-                                    false,
-                                    0xff6b47,
-                                    0.15
-                                )
-                                .setStrokeStyle(2, 0xff6b47, 0.6)
-                                .setDepth(0.3);
+                        const glowRing = this.add
+                            .arc(
+                                newEnemy.x,
+                                newEnemy.y,
+                                32 * OBJECT_SCALE,
+                                0,
+                                360,
+                                false,
+                                0xff6b47,
+                                0.15
+                            )
+                            .setStrokeStyle(2, 0xff6b47, 0.6)
+                            .setDepth(0.3);
 
-                            newEnemy.setData("eliteGlow", glowRing);
-                            this.tweens.add({
-                                targets: glowRing,
-                                alpha: { from: 0.6, to: 0.2 },
-                                scale: { from: 0.9, to: 1.1 },
-                                duration: 800,
-                                yoyo: true,
-                                repeat: -1,
-                                ease: "Sine.easeInOut",
-                            });
-                        }
+                        newEnemy.setData("eliteGlow", glowRing);
+                        this.tweens.add({
+                            targets: glowRing,
+                            alpha: { from: 0.6, to: 0.2 },
+                            scale: { from: 0.9, to: 1.1 },
+                            duration: 800,
+                            yoyo: true,
+                            repeat: -1,
+                            ease: "Sine.easeInOut",
+                        });
                         soundManager.playSfx("eliteSpawn");
                     }
                 }
@@ -5684,7 +5375,7 @@ export class MainScene extends Phaser.Scene {
         this.cameras.main.flash(flashDuration, r, g, b);
 
         // Add screen distortion effects for phases 2 and 3
-        if (toPhase >= 2 && !this.lowGraphics) {
+        if (toPhase >= 2) {
             // Create temporary screen overlay for dangerous phases
             const dangerOverlay = this.add
                 .rectangle(
@@ -5731,7 +5422,7 @@ export class MainScene extends Phaser.Scene {
         soundManager.playSfx("bossPhaseChange");
 
         // Spawn dramatic visual burst
-        if (!this.lowGraphics && this.boss) {
+        if (this.boss) {
             const burstRadius = 60 + (toPhase - 1) * 20;
             const burstColor =
                 toPhase === 3 ? 0xff3030 : toPhase === 2 ? 0xff9632 : 0xff6464;
@@ -5775,13 +5466,6 @@ export class MainScene extends Phaser.Scene {
 
         // Play death explosion sound
         soundManager.playSfx("playerDeath");
-
-        if (this.lowGraphics) {
-            // Simple flash and end
-            this.cameras.main.flash(300, 255, 80, 80);
-            this.time.delayedCall(400, onComplete);
-            return;
-        }
 
         // Screen shake
         this.cameras.main.shake(400, 0.015);
@@ -5847,15 +5531,6 @@ export class MainScene extends Phaser.Scene {
         state.actions.endRun(summary);
         useUIStore.getState().actions.setScreen("summary");
         gameEvents.emit(GAME_EVENT_KEYS.runEnded, summary);
-    }
-
-    setLowGraphicsMode(enabled: boolean) {
-        this.lowGraphics = enabled;
-        if (!enabled && this.starfieldLayers.length === 0) {
-            this.createStarfieldTextures();
-            this.createStarfieldLayers();
-        }
-        this.syncStarfieldVisibility();
     }
 
     // Dev helper: jump directly to a wave for testing.

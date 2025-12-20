@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+    <!-- Outer ring -->
+    <circle cx="32" cy="32" r="16" fill="none" stroke="#ff6b47" stroke-width="4" />
+    <!-- Inner ring -->
+    <circle cx="32" cy="32" r="11" fill="none" stroke="#ff9966" stroke-width="3" opacity="0.9" />
+    <!-- Core -->
+    <circle cx="32" cy="32" r="9" fill="#2a0f0a" />
+    <circle cx="32" cy="32" r="5" fill="#ff6b47" />
+    <!-- Appendages -->
+    <rect x="28" y="46" width="8" height="12" fill="#ff6b47" />
+    <rect x="10" y="30" width="8" height="10" fill="#ff6b47" />
+    <rect x="46" y="30" width="8" height="10" fill="#ff6b47" />
+</svg>

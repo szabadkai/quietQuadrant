@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+    <!-- Outer body -->
+    <rect x="16" y="2" width="32" height="60" rx="6" fill="#0f0c18" stroke="#9d7bff" stroke-width="4" />
+    <!-- Inner body -->
+    <rect x="22" y="12" width="20" height="40" rx="4" fill="#1c1132" />
+    <!-- Diamond pattern -->
+    <path d="M32,12 L44,32 L32,52 L20,32 Z" fill="none" stroke="#cab7ff" stroke-width="3" opacity="0.95" />
+    <!-- Orbs -->
+    <circle cx="32" cy="18" r="4" fill="#cab7ff" opacity="0.9" />
+    <circle cx="32" cy="32" r="5" fill="#cab7ff" opacity="0.9" />
+    <circle cx="32" cy="46" r="4" fill="#cab7ff" opacity="0.9" />
+</svg>

@@ -63,7 +63,6 @@ export interface Settings {
     sfxVolume: number;
     muteAll: boolean;
     muteMusic: boolean;
-    lowGraphicsMode: boolean;
     difficultyMultiplier: number;
     inputMode: InputMode;
 }

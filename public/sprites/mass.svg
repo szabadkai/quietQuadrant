@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+    <!-- Hull -->
+    <polygon points="32,12 50,32 32,52 14,32" fill="#26120f" stroke="#e0a86f" stroke-width="3" />
+    <!-- Viewport -->
+    <rect x="26" y="22" width="12" height="7" fill="#6b3a21" />
+    <!-- Detail lines -->
+    <line x1="22" y1="28" x2="42" y2="28" stroke="#e0a86f" stroke-width="2" opacity="0.8" />
+    <line x1="22" y1="36" x2="42" y2="36" stroke="#e0a86f" stroke-width="2" opacity="0.8" />
+</svg>

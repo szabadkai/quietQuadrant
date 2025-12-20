@@ -186,7 +186,6 @@ export interface Settings {
     masterVolume: number;
     musicVolume: number;
     sfxVolume: number;
-    lowGraphicsMode: boolean;
 }
 ```
 

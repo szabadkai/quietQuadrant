@@ -18,7 +18,6 @@ const defaultSettings: Settings = {
     sfxVolume: 0.7,
     muteAll: false,
     muteMusic: false,
-    lowGraphicsMode: false,
     difficultyMultiplier: 1,
     inputMode: "keyboardMouse",
 };
@@ -50,13 +49,24 @@ const defaultLifetimeStats: LifetimeStats = {
     modeWinCounts: {},
 };
 
-// Default card collection - commons and rares unlocked, legendaries locked
+// Default card collection - start with 10 core upgrades, unlock more through play
+// Includes shield-pickup + kinetic-siphon for the "Immortal Engine" synergy
+const INITIAL_UNLOCKED_UPGRADES = [
+    "power-shot", // core damage
+    "rapid-fire", // core fire rate
+    "swift-projectiles", // projectile speed
+    "engine-tune", // movement
+    "plating", // survivability
+    "sidecar", // extra projectile
+    "pierce", // piercing
+    "shield-pickup", // defense + synergy component
+    "kinetic-siphon", // defense + synergy component (Immortal Engine)
+    "dash-sparks", // dash utility
+];
+
 function getDefaultCardCollection(): CardCollection {
-    const unlockedUpgrades = UPGRADE_CATALOG.filter(
-        (u) => u.rarity !== "legendary"
-    ).map((u) => u.id);
     return {
-        unlockedUpgrades,
+        unlockedUpgrades: [...INITIAL_UNLOCKED_UPGRADES],
         upgradeBoosts: {},
         totalCardsCollected: 0,
     };

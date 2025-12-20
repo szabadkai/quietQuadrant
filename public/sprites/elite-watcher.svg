@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+    <!-- Body -->
+    <rect x="16" y="16" width="32" height="32" rx="6" fill="#1a0f0f" stroke="#ff6b47" stroke-width="4" />
+    <!-- Crosshairs -->
+    <line x1="20" y1="32" x2="44" y2="32" stroke="#ff9966" stroke-width="3" opacity="0.8" />
+    <line x1="32" y1="20" x2="32" y2="44" stroke="#ff9966" stroke-width="3" opacity="0.8" />
+    <!-- Eye -->
+    <circle cx="32" cy="32" r="8" fill="#ff6b47" />
+    <circle cx="32" cy="32" r="5" fill="#2a0f0a" />
+    <!-- Glint -->
+    <circle cx="35" cy="30" r="3" fill="#ff9966" opacity="0.9" />
+</svg>

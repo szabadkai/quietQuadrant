@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+    <!-- Hull -->
+    <polygon points="52,32 20,18 20,46" fill="#0f1b2d" stroke="#9ff0ff" stroke-width="2" />
+    <!-- Cockpit -->
+    <polygon points="38,32 28,26 28,38" fill="#7ad1ff" />
+    <!-- Engines -->
+    <rect x="14" y="24" width="8" height="4" fill="#11344d" />
+    <rect x="14" y="36" width="8" height="4" fill="#11344d" />
+    <!-- Wing lines -->
+    <line x1="20" y1="22" x2="36" y2="28" stroke="#9ff0ff" stroke-width="2" opacity="0.9" />
+    <line x1="20" y1="42" x2="36" y2="36" stroke="#9ff0ff" stroke-width="2" opacity="0.9" />
+    <!-- Core -->
+    <rect x="26" y="27" width="10" height="10" fill="#9ff0ff" opacity="0.8" />
+</svg>
