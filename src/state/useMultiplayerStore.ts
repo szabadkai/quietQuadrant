@@ -236,9 +236,9 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                 const [, getPlayerUpdate] = room.makeAction("playerUpdate");
                 const [, getGameAction] = room.makeAction("gameAction");
                 const [, getGameState] = room.makeAction("gameState");
-                const [, getGameStateDelta] = room.makeAction("gameStateDelta");
+                const [, getGsd] = room.makeAction("gsd"); // "gsd" = game state delta (shortened for Trystero's 12-byte limit)
                 const [, getGuestBullet] = room.makeAction("guestBullet");
-                const [, getSyncRequest] = room.makeAction("syncRequest");
+                const [, getSyncRequest] = room.makeAction("syncReq"); // shortened
 
                 getGuestBullet((bullet: GuestBulletRequest) => {
                     if (!bullet) return;
@@ -287,7 +287,7 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                 });
 
                 // Delta state handler
-                getGameStateDelta((delta: GameStateDelta) => {
+                getGsd((delta: GameStateDelta) => {
                     if (!delta) return;
                     let { guestStateBuffer } = get();
                     if (!guestStateBuffer) {
@@ -376,7 +376,7 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                 const [, getPlayerUpdate] = room.makeAction("playerUpdate");
                 const [, getGameAction] = room.makeAction("gameAction");
                 const [, getGameState] = room.makeAction("gameState");
-                const [, getGameStateDelta] = room.makeAction("gameStateDelta");
+                const [, getGsd] = room.makeAction("gsd"); // "gsd" = game state delta
 
                 getPlayerUpdate((data: any, peerId: string) => {
                     if (!data) return;
@@ -419,7 +419,7 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                 });
 
                 // Delta state handler - primary sync method
-                getGameStateDelta((delta: GameStateDelta) => {
+                getGsd((delta: GameStateDelta) => {
                     if (!delta) return;
                     let { guestStateBuffer } = get();
                     if (!guestStateBuffer) {
@@ -565,8 +565,8 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
 
             // Generate and send delta
             const delta = generateDelta(deltaTracker, state);
-            const [sendGameStateDelta] = room.makeAction("gameStateDelta");
-            sendGameStateDelta(delta);
+            const [sendGsd] = room.makeAction("gsd");
+            sendGsd(delta);
             set({ lastBroadcastTime: now });
         },
 
