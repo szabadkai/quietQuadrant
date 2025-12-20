@@ -115,7 +115,7 @@ jobs:
               uses: actions/setup-java@v4
               with:
                   distribution: "temurin"
-                  java-version: "17"
+                  java-version: "21"
 
             - name: Setup Android SDK
               uses: android-actions/setup-android@v3
@@ -160,6 +160,10 @@ jobs:
 
             - name: Sync Capacitor
               run: npx cap sync ios
+
+            - name: Install CocoaPods
+              working-directory: ios/App
+              run: pod install
 
             - name: Build iOS (unsigned)
               working-directory: ios/App
