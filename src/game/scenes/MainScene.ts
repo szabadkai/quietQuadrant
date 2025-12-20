@@ -636,6 +636,47 @@ export class MainScene extends Phaser.Scene {
                 );
                 break;
             }
+            case "tesla-coil": {
+                // Chain arc + explosive = boosted arc damage
+                this.chainArcConfig.damagePercent += 0.15;
+                break;
+            }
+            case "glass-storm": {
+                // Glass cannon + bullet hell = reduced accuracy penalty
+                this.bulletHellConfig.inaccuracyRad *= 0.5;
+                break;
+            }
+            case "phantom-striker": {
+                // Dash sparks + shrapnel = reduced dash cooldown
+                if (this.playerState) {
+                    this.playerState.ability.dashCooldownMs *= 0.75;
+                }
+                if (this.playerTwoState) {
+                    this.playerTwoState.ability.dashCooldownMs *= 0.75;
+                }
+                break;
+            }
+            case "gravity-well": {
+                // Singularity + explosive = bigger explosions
+                this.explosiveConfig.radius *= 1.3;
+                break;
+            }
+            case "sniper-elite": {
+                // Held charge + heatseeker = stronger homing on charged + crit bonus
+                this.homingConfig.turnRate *= 2;
+                this.playerStats.critMultiplier += 0.1;
+                break;
+            }
+            case "immortal-engine": {
+                // Shield pickup + kinetic siphon = longer shields
+                this.shieldConfig.durationMs *= 1.5;
+                break;
+            }
+            case "prism-cannon": {
+                // Prism spread + heavy barrel + sidecar = crit bonus
+                this.playerStats.critChance += 0.08;
+                break;
+            }
             default:
                 break;
         }
