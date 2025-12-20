@@ -14,6 +14,7 @@ import { GameCanvas } from "./ui/components/GameCanvas";
 import { HowToPlay } from "./ui/components/HowToPlay";
 import { HUD } from "./ui/components/HUD";
 import { PauseMenu } from "./ui/components/PauseMenu";
+import { RunMenu } from "./ui/components/RunMenu";
 import { SummaryScreen } from "./ui/components/SummaryScreen";
 import { StatsScreen } from "./ui/components/StatsScreen";
 import { TitleScreen } from "./ui/components/TitleScreen";
@@ -24,6 +25,7 @@ import { JoinGame } from "./ui/components/JoinGame";
 import { UpgradeOverlay } from "./ui/components/UpgradeOverlay";
 import { WaveCountdown } from "./ui/components/WaveCountdown";
 import { TouchControls } from "./ui/components/TouchControls";
+import { MobileMenuButton } from "./ui/components/MobileMenuButton";
 import { StreakPopup } from "./ui/components/StreakPopup";
 import { AchievementPopup } from "./ui/components/AchievementPopup";
 import { useInputStore } from "./state/useInputStore";
@@ -33,6 +35,7 @@ import { isNativeMobile } from "./utils/mobile";
 function App() {
 	const screen = useUIStore((s) => s.screen);
 	const pauseOpen = useUIStore((s) => s.pauseMenuOpen);
+	const runMenuOpen = useUIStore((s) => s.runMenuOpen);
 
 	useEffect(() => {
 		useMetaStore.getState().actions.hydrateFromPersistence();
@@ -117,13 +120,40 @@ function App() {
 	}, []);
 
 	useEffect(() => {
-		const { openPause: onOpenPause, closePause: onClosePause } =
+		const { openPause: onOpenPause, closePause: onClosePause, openRunMenu, closeRunMenu } =
 			useUIStore.getState().actions;
 		const onKeyDown = (ev: KeyboardEvent) => {
+			// Tab key toggles run menu
+			if (ev.key === "Tab") {
+				ev.preventDefault();
+				const uiState = useUIStore.getState();
+				const runState = useRunStore.getState().status;
+				
+				if (uiState.runMenuOpen) {
+					closeRunMenu();
+					gameManager.resume();
+					return;
+				}
+				
+				if (runState === "running" && uiState.screen === "inGame" && !uiState.pauseMenuOpen) {
+					openRunMenu();
+					gameManager.pause();
+				}
+				return;
+			}
+
 			if (ev.key !== "Escape") return;
 
-			const pauseOpen = useUIStore.getState().pauseMenuOpen;
-			if (pauseOpen) {
+			const uiState = useUIStore.getState();
+			
+			// Close run menu first if open
+			if (uiState.runMenuOpen) {
+				closeRunMenu();
+				gameManager.resume();
+				return;
+			}
+
+			if (uiState.pauseMenuOpen) {
 				onClosePause();
 				gameManager.resume();
 				return;
@@ -140,7 +170,7 @@ function App() {
 	}, []);
 
 	useEffect(() => {
-		if (pauseOpen) {
+		if (pauseOpen || runMenuOpen) {
 			gameManager.pause();
 			useRunStore.getState().actions.setStatus("paused");
 			return;
@@ -152,7 +182,7 @@ function App() {
 			gameManager.resume();
 			useRunStore.getState().actions.setStatus("running");
 		}
-	}, [pauseOpen]);
+	}, [pauseOpen, runMenuOpen]);
 
 	return (
 		<div className="app-shell">
@@ -162,6 +192,7 @@ function App() {
 				<WaveCountdown />
 				<UpgradeOverlay />
 				<PauseMenu />
+				<RunMenu />
 				<CardRewardOverlay />
 				{import.meta.env.DEV && <DevPanel />}
 			</div>
@@ -175,6 +206,7 @@ function App() {
 			{screen === "hostGame" && <HostGame />}
 			{screen === "joinGame" && <JoinGame />}
 			<TouchControls />
+			<MobileMenuButton />
 			<StreakPopup />
 			<AchievementPopup />
 		</div>

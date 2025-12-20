@@ -267,8 +267,88 @@ canvas {
 	margin: 16px 0 8px;
 }
 
-.pause-loadout {
+.pause-panel {
+	max-width: 320px;
+	width: min(90vw, 320px);
+	text-align: center;
+}
+
+.pause-settings {
+	margin-bottom: 16px;
+}
+
+.pause-settings .subheader {
+	margin: 0 0 12px;
+}
+
+.pause-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding-top: 16px;
+	border-top: 1px solid var(--vector-line);
+}
+
+/* Run Menu */
+.overlay.run-menu {
+	z-index: 11;
+}
+
+.run-panel {
+	max-width: 480px;
+	width: min(90vw, 480px);
+	max-height: calc(100vh - 48px);
+	max-height: calc(100dvh - 48px);
+	overflow-y: auto;
+}
+
+.run-level {
+	font-size: 18px;
+	color: var(--vector-ink-strong);
+	margin-bottom: 12px;
+}
+
+.run-loadout {
+	margin-top: 8px;
+}
+
+.run-loadout .subheader {
+	margin: 0 0 10px;
+}
+
+.run-empty {
+	color: var(--vector-ink-soft);
+	font-size: 13px;
+	padding: 16px 0;
+}
+
+.run-actions {
+	margin-top: 16px;
+	padding-top: 12px;
+	border-top: 1px solid var(--vector-line);
+}
+
+.run-actions button {
+	width: 100%;
+}
+
+.run-menu .note {
 	margin-top: 12px;
+	font-size: 11px;
+	color: var(--vector-ink-soft);
+	text-align: center;
+}
+
+/* Clickable HUD block */
+.hud-block.clickable {
+	cursor: pointer;
+	pointer-events: auto;
+	transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.hud-block.clickable:hover {
+	border-color: var(--vector-ink);
+	box-shadow: 0 0 8px rgba(120, 243, 255, 0.2);
 }
 
 .swatch-grid {
@@ -1135,25 +1215,14 @@ button.tiny {
 		max-height: calc(100dvh - 24px);
 	}
 
-	.pause-loadout {
-		margin-top: 8px;
-		max-height: 150px;
-		overflow-y: auto;
-	}
-
 	.pause-settings {
-		margin-top: 8px;
+		margin-top: 12px;
+		padding-top: 12px;
 	}
 
 	.subheader {
 		font-size: 10px;
 		margin: 12px 0 6px;
-	}
-
-	/* Pause menu note */
-	.pause-menu .note {
-		font-size: 11px;
-		margin-top: 8px;
 	}
 
 	/* Twin setup */
@@ -1294,7 +1363,7 @@ button.tiny {
 	}
 
 	/* Hide less important info on very small screens */
-	.pause-season {
+	.season-card .season-details {
 		display: none;
 	}
 
@@ -1415,11 +1484,14 @@ button.tiny {
 		display: none;
 	}
 
-	/* Pause menu - hide loadout */
-	.pause-loadout,
-	.pause-season,
+	/* Pause menu - compact in landscape */
+	.pause-panel {
+		max-width: 280px;
+	}
+
 	.pause-settings {
-		display: none;
+		margin-top: 12px;
+		padding-top: 10px;
 	}
 
 	/* Twin setup horizontal */
@@ -1656,6 +1728,33 @@ button.tiny {
 @keyframes spin {
 	0% { transform: rotate(0deg); }
 	100% { transform: rotate(360deg); }
+}
+
+/* Mobile Menu Buttons */
+.mobile-menu-buttons {
+	position: fixed;
+	top: 12px;
+	right: 12px;
+	z-index: 15;
+	display: flex;
+	gap: 8px;
+}
+
+.mobile-menu-btn {
+	padding: 8px 14px;
+	font-size: 12px;
+	background: rgba(3, 7, 12, 0.85);
+	border: 1px solid var(--vector-line);
+	border-radius: 6px;
+	color: var(--vector-ink);
+	min-width: 44px;
+	min-height: 44px;
+	touch-action: manipulation;
+}
+
+.mobile-menu-btn.is-pressed {
+	background: rgba(120, 243, 255, 0.15);
+	border-color: var(--vector-ink);
 }
 
 /* Touch Controls - Dual Stick */
@@ -2611,13 +2710,14 @@ button.tiny {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	padding: 20px 16px;
+	padding: 24px 16px 20px;
 	background: rgba(5, 10, 16, 0.85);
 	border: 2px solid var(--vector-line);
 	border-radius: 10px;
 	cursor: pointer;
 	transition: all 0.2s ease;
 	text-align: center;
+	overflow: visible;
 }
 
 .card-reward-card:hover {
@@ -2658,6 +2758,7 @@ button.tiny {
 	font-weight: 600;
 	color: var(--vector-accent);
 	white-space: nowrap;
+	z-index: 1;
 }
 
 .card-reward-card.unlock .card-action-badge {

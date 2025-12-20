@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { gameManager } from "../../game/GameManager";
 import { useInputStore } from "../../state/useInputStore";
 import { useUIStore } from "../../state/useUIStore";
 
@@ -6,28 +7,47 @@ export const MobileMenuButton = () => {
 	const isMobile = useInputStore((s) => s.isMobile);
 	const screen = useUIStore((s) => s.screen);
 	const pauseOpen = useUIStore((s) => s.pauseMenuOpen);
+	const runMenuOpen = useUIStore((s) => s.runMenuOpen);
 	const upgradeOpen = useUIStore((s) => s.upgradeSelectionOpen);
-	const { openPause } = useUIStore((s) => s.actions);
-	const [pressed, setPressed] = useState(false);
+	const { openPause, openRunMenu } = useUIStore((s) => s.actions);
+	const [pressedBtn, setPressedBtn] = useState<string | null>(null);
 
 	useEffect(() => {
-		if (!pauseOpen) {
-			setPressed(false);
+		if (!pauseOpen && !runMenuOpen) {
+			setPressedBtn(null);
 		}
-	}, [pauseOpen]);
+	}, [pauseOpen, runMenuOpen]);
 
-	if (!isMobile || screen !== "inGame" || pauseOpen || upgradeOpen) return null;
+	if (!isMobile || screen !== "inGame" || pauseOpen || runMenuOpen || upgradeOpen) return null;
 
 	return (
-		<button
-			className={`mobile-menu-button ${pressed ? "is-pressed" : ""}`}
-			onPointerDown={() => setPressed(true)}
-			onPointerUp={() => setPressed(false)}
-			onPointerCancel={() => setPressed(false)}
-			onClick={() => openPause()}
-			type="button"
-		>
-			Menu
-		</button>
+		<div className="mobile-menu-buttons">
+			<button
+				className={`mobile-menu-btn ${pressedBtn === "run" ? "is-pressed" : ""}`}
+				onPointerDown={() => setPressedBtn("run")}
+				onPointerUp={() => setPressedBtn(null)}
+				onPointerCancel={() => setPressedBtn(null)}
+				onClick={() => {
+					openRunMenu();
+					gameManager.pause();
+				}}
+				type="button"
+			>
+				Run
+			</button>
+			<button
+				className={`mobile-menu-btn ${pressedBtn === "pause" ? "is-pressed" : ""}`}
+				onPointerDown={() => setPressedBtn("pause")}
+				onPointerUp={() => setPressedBtn(null)}
+				onPointerCancel={() => setPressedBtn(null)}
+				onClick={() => {
+					openPause();
+					gameManager.pause();
+				}}
+				type="button"
+			>
+				⏸
+			</button>
+		</div>
 	);
 };

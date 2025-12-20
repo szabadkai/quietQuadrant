@@ -37,6 +37,7 @@ export const TouchControls = () => {
 	const screen = useUIStore((s) => s.screen);
 	const upgradeOpen = useUIStore((s) => s.upgradeSelectionOpen);
 	const pauseOpen = useUIStore((s) => s.pauseMenuOpen);
+	const runMenuOpen = useUIStore((s) => s.runMenuOpen);
 	const [portrait, setPortrait] = useState(false);
 	const leftPointerId = useRef<number | null>(null);
 	const rightPointerId = useRef<number | null>(null);
@@ -111,7 +112,7 @@ export const TouchControls = () => {
 		};
 	}, [releaseLeftStick, releaseRightStick, updateStick]);
 
-	if (!isMobile || screen !== "inGame" || upgradeOpen || pauseOpen) return null;
+	if (!isMobile || screen !== "inGame" || upgradeOpen || pauseOpen || runMenuOpen) return null;
 
 	const beginStick = (
 		side: StickSide,

@@ -3,6 +3,7 @@ import { AFFIXES } from "../../config/affixes";
 import { BOSSES } from "../../config/bosses";
 import { gameManager } from "../../game/GameManager";
 import { useRunStore } from "../../state/useRunStore";
+import { useUIStore } from "../../state/useUIStore";
 
 export const HUD = () => {
 	const playerHealth = useRunStore((s) => s.playerHealth);
@@ -14,6 +15,7 @@ export const HUD = () => {
 	const waveCap = useRunStore((s) => s.waveCap);
 	const elapsedTime = useRunStore((s) => s.elapsedTime);
 	const currentSeed = useRunStore((s) => s.seedId);
+	const { openRunMenu } = useUIStore((s) => s.actions);
 	const [seasonInfo, setSeasonInfo] = useState(() =>
 		gameManager.getSeasonInfo(),
 	);
@@ -40,6 +42,11 @@ export const HUD = () => {
 		? AFFIXES.find((a) => a.id === seasonInfo.affix?.id)
 		: null;
 
+	const handleXpClick = () => {
+		openRunMenu();
+		gameManager.pause();
+	};
+
 	return (
 		<div className="hud">
 			<div className="hud-row">
@@ -57,7 +64,11 @@ export const HUD = () => {
 						/>
 					</div>
 				</div>
-				<div className="hud-block">
+				<div 
+					className="hud-block clickable"
+					onClick={handleXpClick}
+					title="View run status (Tab)"
+				>
 					<div className="hud-top-line">
 						<span className="label">XP</span>
 						<span className="tiny">
