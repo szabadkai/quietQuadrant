@@ -1,0 +1,279 @@
+name: Build and Release
+
+on:
+    push:
+        tags:
+            - "v*"
+    workflow_dispatch:
+        inputs:
+            version:
+                description: "Version to release (e.g., 1.5.1)"
+                required: true
+                type: string
+
+permissions:
+    contents: write
+
+jobs:
+    # Build Electron apps for all desktop platforms
+    build-electron-windows:
+        runs-on: windows-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: "npm"
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Build Electron for Windows
+              run: npm run electron:build:win
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Upload Windows artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: electron-windows
+                  path: |
+                      release/*.exe
+                  retention-days: 5
+
+    build-electron-macos:
+        runs-on: macos-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: "npm"
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Build Electron for macOS
+              run: npm run electron:build:mac
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  CSC_IDENTITY_AUTO_DISCOVERY: false
+
+            - name: Upload macOS artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: electron-macos
+                  path: |
+                      release/*.dmg
+                  retention-days: 5
+
+    build-electron-linux:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: "npm"
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Build Electron for Linux
+              run: npm run electron:build:linux
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Upload Linux artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: electron-linux
+                  path: |
+                      release/*.AppImage
+                      release/*.deb
+                  retention-days: 5
+
+    # Build Android APK
+    build-android:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: "npm"
+
+            - name: Setup Java
+              uses: actions/setup-java@v4
+              with:
+                  distribution: "temurin"
+                  java-version: "17"
+
+            - name: Setup Android SDK
+              uses: android-actions/setup-android@v3
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Build web assets
+              run: npm run build
+
+            - name: Sync Capacitor
+              run: npx cap sync android
+
+            - name: Build Android APK
+              working-directory: android
+              run: ./gradlew assembleDebug
+
+            - name: Upload Android artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: android
+                  path: android/app/build/outputs/apk/debug/*.apk
+                  retention-days: 5
+
+    # Build iOS (unsigned IPA for sideloading)
+    build-ios:
+        runs-on: macos-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: "npm"
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Build web assets
+              run: npm run build
+
+            - name: Sync Capacitor
+              run: npx cap sync ios
+
+            - name: Build iOS (unsigned)
+              working-directory: ios/App
+              run: |
+                  xcodebuild -workspace App.xcworkspace \
+                    -scheme App \
+                    -configuration Release \
+                    -sdk iphoneos \
+                    -archivePath build/App.xcarchive \
+                    archive \
+                    CODE_SIGN_IDENTITY="" \
+                    CODE_SIGNING_REQUIRED=NO \
+                    CODE_SIGNING_ALLOWED=NO
+
+            - name: Create unsigned IPA
+              working-directory: ios/App
+              run: |
+                  mkdir -p build/Payload
+                  cp -r build/App.xcarchive/Products/Applications/App.app build/Payload/
+                  cd build
+                  zip -r QuietQuadrant-unsigned.ipa Payload
+
+            - name: Upload iOS artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: ios
+                  path: ios/App/build/*.ipa
+                  retention-days: 5
+
+    # Create GitHub Release with all artifacts
+    release:
+        needs:
+            [
+                build-electron-windows,
+                build-electron-macos,
+                build-electron-linux,
+                build-android,
+                build-ios,
+            ]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Get version
+              id: version
+              run: |
+                  if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                    echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
+                  else
+                    echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Download all artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  path: artifacts
+
+            - name: Prepare release assets
+              run: |
+                  mkdir -p release-assets
+                  VERSION=${{ steps.version.outputs.VERSION }}
+
+                  # Rename and move Windows artifacts
+                  for f in artifacts/electron-windows/*.exe; do
+                    if [ -f "$f" ]; then
+                      filename=$(basename "$f")
+                      if [[ "$filename" == *"Setup"* ]]; then
+                        cp "$f" "release-assets/QuietQuadrant-${VERSION}-Windows-Setup.exe"
+                      else
+                        cp "$f" "release-assets/QuietQuadrant-${VERSION}-Windows-Portable.exe"
+                      fi
+                    fi
+                  done
+
+                  # Rename and move macOS artifacts
+                  for f in artifacts/electron-macos/*.dmg; do
+                    if [ -f "$f" ]; then
+                      filename=$(basename "$f")
+                      if [[ "$filename" == *"arm64"* ]]; then
+                        cp "$f" "release-assets/QuietQuadrant-${VERSION}-macOS-arm64.dmg"
+                      else
+                        cp "$f" "release-assets/QuietQuadrant-${VERSION}-macOS-x64.dmg"
+                      fi
+                    fi
+                  done
+
+                  # Rename and move Linux artifacts
+                  for f in artifacts/electron-linux/*.AppImage; do
+                    [ -f "$f" ] && cp "$f" "release-assets/QuietQuadrant-${VERSION}-Linux.AppImage"
+                  done
+                  for f in artifacts/electron-linux/*.deb; do
+                    [ -f "$f" ] && cp "$f" "release-assets/QuietQuadrant-${VERSION}-Linux.deb"
+                  done
+
+                  # Rename and move Android artifacts
+                  for f in artifacts/android/*.apk; do
+                    [ -f "$f" ] && cp "$f" "release-assets/QuietQuadrant-${VERSION}-Android.apk"
+                  done
+
+                  # Rename and move iOS artifacts
+                  for f in artifacts/ios/*.ipa; do
+                    [ -f "$f" ] && cp "$f" "release-assets/QuietQuadrant-${VERSION}-iOS-unsigned.ipa"
+                  done
+
+                  ls -la release-assets/
+
+            - name: Create Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+                  name: Quiet Quadrant v${{ steps.version.outputs.VERSION }}
+                  draft: false
+                  prerelease: false
+                  generate_release_notes: true
+                  files: release-assets/*
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
