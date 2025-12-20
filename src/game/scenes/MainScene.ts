@@ -4126,6 +4126,10 @@ export class MainScene extends Phaser.Scene {
             this.boss = undefined;
             this.bossMaxHealth = 0;
             this.bossPhase = 1;
+
+            // Trigger card reward for defeating boss
+            useMetaStore.getState().actions.triggerCardReward();
+
             if (!this.infiniteMode) {
                 this.endRun(true);
             }
@@ -4418,7 +4422,16 @@ export class MainScene extends Phaser.Scene {
 
     private rollUpgradeOptions(): UpgradeDefinition[] {
         const sidecarStacks = this.upgradeStacks["sidecar"] ?? 0;
+
+        // Get card collection from meta store
+        const cardCollection = useMetaStore.getState().cardCollection;
+        const unlockedUpgrades = cardCollection.unlockedUpgrades;
+        const upgradeBoosts = cardCollection.upgradeBoosts;
+
         const available = UPGRADE_CATALOG.filter((u) => {
+            // Only show unlocked upgrades
+            if (!unlockedUpgrades.includes(u.id)) return false;
+
             const stacks = this.upgradeStacks[u.id] ?? 0;
             // Prism Spread only matters when Sidecar is active; hide it until then.
             if (u.id === "prism-spread" && sidecarStacks === 0) return false;
@@ -4438,7 +4451,13 @@ export class MainScene extends Phaser.Scene {
             } else {
                 rarityBase = UPGRADE_RARITY_ODDS[u.rarity] ?? 0;
             }
-            return Math.max(0, (u.dropWeight ?? 1) * rarityBase);
+            // Apply boost from card collection (each boost level adds 20% weight)
+            const boostLevel = upgradeBoosts[u.id] ?? 0;
+            const boostMultiplier = 1 + boostLevel * 0.2;
+            return Math.max(
+                0,
+                (u.dropWeight ?? 1) * rarityBase * boostMultiplier
+            );
         };
         const weightedPool = available
             .map((u) => ({ def: u, weight: weightFor(u) }))

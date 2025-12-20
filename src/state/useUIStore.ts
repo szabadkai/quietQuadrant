@@ -9,7 +9,8 @@ export type UIScreen =
     | "multiplayerSetup"
     | "hostGame"
     | "joinGame"
-    | "stats";
+    | "stats"
+    | "collection";
 
 interface UIState {
     screen: UIScreen;

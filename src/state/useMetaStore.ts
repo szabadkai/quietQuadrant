@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import type {
+    CardCollection,
     LifetimeStats,
     PerSeedBest,
     RunSummary,
     Settings,
 } from "../models/types";
+import { UPGRADE_CATALOG } from "../config/upgrades";
 import { LocalStorageAdapter } from "../persistence/LocalStorageAdapter";
 import type { MetaStatePayload } from "../persistence/PersistenceAdapter";
 
@@ -47,6 +49,18 @@ const defaultLifetimeStats: LifetimeStats = {
     modePlayCounts: {},
     modeWinCounts: {},
 };
+
+// Default card collection - commons and rares unlocked, legendaries locked
+function getDefaultCardCollection(): CardCollection {
+    const unlockedUpgrades = UPGRADE_CATALOG.filter(
+        (u) => u.rarity !== "legendary"
+    ).map((u) => u.id);
+    return {
+        unlockedUpgrades,
+        upgradeBoosts: {},
+        totalCardsCollected: 0,
+    };
+}
 
 function getTodayDateString(): string {
     return new Date().toISOString().split("T")[0];
@@ -226,6 +240,12 @@ interface MetaState {
     bestRunsBySeed: PerSeedBest;
     topRuns: RunSummary[];
     lifetimeStats: LifetimeStats;
+    cardCollection: CardCollection;
+    // Pending card reward after boss defeat
+    pendingCardReward: {
+        active: boolean;
+        options: string[]; // upgrade ids to choose from
+    };
     streakPopup: {
         show: boolean;
         streak: number;
@@ -249,6 +269,12 @@ interface MetaState {
             description: string
         ) => void;
         dismissAchievementPopup: () => void;
+        // Card collection actions
+        triggerCardReward: () => void;
+        selectCardReward: (upgradeId: string) => Promise<void>;
+        dismissCardReward: () => void;
+        isUpgradeUnlocked: (upgradeId: string) => boolean;
+        getUpgradeBoost: (upgradeId: string) => number;
     };
 }
 
@@ -259,6 +285,11 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
     bestRunsBySeed: {},
     topRuns: [],
     lifetimeStats: defaultLifetimeStats,
+    cardCollection: getDefaultCardCollection(),
+    pendingCardReward: {
+        active: false,
+        options: [],
+    },
     streakPopup: {
         show: false,
         streak: 0,
@@ -290,6 +321,10 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
                 ...defaultLifetimeStats,
                 ...(payload?.lifetimeStats ?? {}),
             };
+            const cardCollection = {
+                ...getDefaultCardCollection(),
+                ...(payload?.cardCollection ?? {}),
+            };
 
             // Update daily streak on load
             const streakResult = updateDailyStreak(lifetimeStats);
@@ -301,6 +336,7 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
                     bestRunsBySeed,
                     topRuns,
                     lifetimeStats: streakResult.stats,
+                    cardCollection,
                     streakPopup: {
                         show: streakResult.showPopup,
                         streak: streakResult.stats.currentDailyStreak,
@@ -318,6 +354,7 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
                 bestRunsBySeed,
                 topRuns,
                 lifetimeStats: streakResult.stats,
+                cardCollection,
                 streakPopup: {
                     show: streakResult.showPopup,
                     streak: streakResult.stats.currentDailyStreak,
@@ -379,6 +416,7 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
                 bestRunsBySeed,
                 topRuns,
                 lifetimeStats,
+                cardCollection: state.cardCollection,
             };
             await adapter.saveMeta(meta);
             set(() => ({
@@ -400,6 +438,7 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
                 bestRunsBySeed: state.bestRunsBySeed,
                 topRuns: state.topRuns,
                 lifetimeStats: state.lifetimeStats,
+                cardCollection: state.cardCollection,
             };
             await adapter.saveMeta(meta);
             set(() => ({ settings }));
@@ -433,6 +472,130 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
                     synergyDescription: "",
                 },
             }));
+        },
+        // Card collection actions
+        triggerCardReward: () => {
+            const state = get();
+            const collection = state.cardCollection;
+
+            // Build pool of possible rewards:
+            // 1. Locked upgrades (can be unlocked)
+            // 2. Unlocked upgrades with boost < 5 (can be boosted)
+            const lockedUpgrades = UPGRADE_CATALOG.filter(
+                (u) => !collection.unlockedUpgrades.includes(u.id)
+            ).map((u) => u.id);
+
+            const boostableUpgrades = UPGRADE_CATALOG.filter((u) => {
+                const isUnlocked = collection.unlockedUpgrades.includes(u.id);
+                const currentBoost = collection.upgradeBoosts[u.id] ?? 0;
+                return isUnlocked && currentBoost < 5;
+            }).map((u) => u.id);
+
+            // Combine pools with weighted selection
+            // Locked legendaries have higher weight to make them exciting
+            const pool: { id: string; weight: number }[] = [];
+
+            for (const id of lockedUpgrades) {
+                const upgrade = UPGRADE_CATALOG.find((u) => u.id === id);
+                // Legendaries are more likely to appear as rewards
+                const weight = upgrade?.rarity === "legendary" ? 3 : 1;
+                pool.push({ id, weight });
+            }
+
+            for (const id of boostableUpgrades) {
+                pool.push({ id, weight: 1 });
+            }
+
+            if (pool.length === 0) {
+                // All maxed out, no reward
+                return;
+            }
+
+            // Pick 3 random options (or fewer if pool is small)
+            const options: string[] = [];
+            const poolCopy = [...pool];
+            const numOptions = Math.min(3, poolCopy.length);
+
+            for (let i = 0; i < numOptions; i++) {
+                const totalWeight = poolCopy.reduce(
+                    (sum, p) => sum + p.weight,
+                    0
+                );
+                let roll = Math.random() * totalWeight;
+                let pickedIndex = 0;
+                for (let j = 0; j < poolCopy.length; j++) {
+                    roll -= poolCopy[j].weight;
+                    if (roll <= 0) {
+                        pickedIndex = j;
+                        break;
+                    }
+                }
+                options.push(poolCopy[pickedIndex].id);
+                poolCopy.splice(pickedIndex, 1);
+            }
+
+            set(() => ({
+                pendingCardReward: {
+                    active: true,
+                    options,
+                },
+            }));
+        },
+        selectCardReward: async (upgradeId: string) => {
+            const state = get();
+            const collection = { ...state.cardCollection };
+            const isLocked = !collection.unlockedUpgrades.includes(upgradeId);
+
+            if (isLocked) {
+                // Unlock the upgrade
+                collection.unlockedUpgrades = [
+                    ...collection.unlockedUpgrades,
+                    upgradeId,
+                ];
+            } else {
+                // Boost the upgrade
+                const currentBoost = collection.upgradeBoosts[upgradeId] ?? 0;
+                collection.upgradeBoosts = {
+                    ...collection.upgradeBoosts,
+                    [upgradeId]: Math.min(5, currentBoost + 1),
+                };
+            }
+
+            collection.totalCardsCollected += 1;
+
+            const meta: MetaStatePayload = {
+                schemaVersion: 1,
+                bestRun: state.bestRun,
+                totalRuns: state.totalRuns,
+                settings: state.settings,
+                bestRunsBySeed: state.bestRunsBySeed,
+                topRuns: state.topRuns,
+                lifetimeStats: state.lifetimeStats,
+                cardCollection: collection,
+            };
+            await adapter.saveMeta(meta);
+
+            set(() => ({
+                cardCollection: collection,
+                pendingCardReward: {
+                    active: false,
+                    options: [],
+                },
+            }));
+        },
+        dismissCardReward: () => {
+            set(() => ({
+                pendingCardReward: {
+                    active: false,
+                    options: [],
+                },
+            }));
+        },
+        isUpgradeUnlocked: (upgradeId: string) => {
+            return get().cardCollection.unlockedUpgrades.includes(upgradeId);
+        },
+        getUpgradeBoost: (upgradeId: string) => {
+            return get().cardCollection.upgradeBoosts[upgradeId] ?? 0;
         },
     },
 }));

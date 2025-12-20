@@ -7,6 +7,8 @@ import type { RunSummary } from "./models/types";
 import { useMetaStore } from "./state/useMetaStore";
 import { useRunStore } from "./state/useRunStore";
 import { useUIStore } from "./state/useUIStore";
+import { CardRewardOverlay } from "./ui/components/CardRewardOverlay";
+import { CollectionScreen } from "./ui/components/CollectionScreen";
 import { DevPanel } from "./ui/components/DevPanel";
 import { GameCanvas } from "./ui/components/GameCanvas";
 import { HowToPlay } from "./ui/components/HowToPlay";
@@ -160,12 +162,14 @@ function App() {
 				<WaveCountdown />
 				<UpgradeOverlay />
 				<PauseMenu />
+				<CardRewardOverlay />
 				{import.meta.env.DEV && <DevPanel />}
 			</div>
 			{screen === "title" && <TitleScreen />}
 			{screen === "howToPlay" && <HowToPlay />}
 			{screen === "summary" && <SummaryScreen />}
 			{screen === "stats" && <StatsScreen />}
+			{screen === "collection" && <CollectionScreen />}
 			{screen === "twinSetup" && <TwinSetup />}
 			{screen === "multiplayerSetup" && <MultiplayerSetup />}
 			{screen === "hostGame" && <HostGame />}

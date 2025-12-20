@@ -43,6 +43,7 @@ export const TitleScreen = () => {
 	const randomRef = useRef<HTMLButtonElement>(null);
 	const twinRef = useRef<HTMLButtonElement>(null);
 	const infiniteRef = useRef<HTMLButtonElement>(null);
+	const collectionRef = useRef<HTMLButtonElement>(null);
 	const statsRef = useRef<HTMLButtonElement>(null);
 	const howToRef = useRef<HTMLButtonElement>(null);
 
@@ -52,6 +53,7 @@ export const TitleScreen = () => {
 			{ ref: randomRef, onActivate: startRandom },
 			{ ref: twinRef, onActivate: startTwin },
 			{ ref: infiniteRef, onActivate: startInfinite },
+			{ ref: collectionRef, onActivate: () => setScreen("collection") },
 			{ ref: statsRef, onActivate: () => setScreen("stats") },
 			{ ref: howToRef, onActivate: () => setScreen("howToPlay") },
 		],
@@ -109,9 +111,17 @@ export const TitleScreen = () => {
 						Infinite Mode
 					</button>
 					<button
-						ref={statsRef}
+						ref={collectionRef}
 						tabIndex={0}
 						className={`ghost ${nav.focusedIndex === 4 ? "nav-focused" : ""}`}
+						onClick={() => setScreen("collection")}
+					>
+						Collection
+					</button>
+					<button
+						ref={statsRef}
+						tabIndex={0}
+						className={`ghost ${nav.focusedIndex === 5 ? "nav-focused" : ""}`}
 						onClick={() => setScreen("stats")}
 					>
 						Stats
@@ -119,7 +129,7 @@ export const TitleScreen = () => {
 					<button
 						ref={howToRef}
 						tabIndex={0}
-						className={`ghost ${nav.focusedIndex === 5 ? "nav-focused" : ""}`}
+						className={`ghost ${nav.focusedIndex === 6 ? "nav-focused" : ""}`}
 						onClick={() => setScreen("howToPlay")}
 					>
 						How to Play

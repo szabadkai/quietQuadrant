@@ -1,4 +1,5 @@
 import type {
+    CardCollection,
     LifetimeStats,
     PerSeedBest,
     RunSummary,
@@ -13,6 +14,7 @@ export interface MetaStatePayload {
     bestRunsBySeed?: PerSeedBest;
     topRuns?: RunSummary[];
     lifetimeStats?: LifetimeStats;
+    cardCollection?: CardCollection;
 }
 
 export interface PersistenceAdapter {

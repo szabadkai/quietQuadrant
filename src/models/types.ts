@@ -182,4 +182,14 @@ export interface LifetimeStats {
     modeWinCounts: Record<string, number>; // Wins per mode
 }
 
+// Card collection system - unlocked upgrades and their boost levels
+export interface CardCollection {
+    // Which upgrades are unlocked (by id). Legendaries start locked.
+    unlockedUpgrades: string[];
+    // Boost levels for upgrades (increases drop weight). 0 = base, max 5
+    upgradeBoosts: Record<string, number>;
+    // Total cards collected (for display)
+    totalCardsCollected: number;
+}
+
 export type PerSeedBest = Record<string, RunSummary>;
