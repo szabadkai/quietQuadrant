@@ -1,94 +1,35 @@
+/**
+ * Multiplayer Store - Simplified state management for deterministic networking
+ *
+ * This store now acts as a thin wrapper around NetworkManager,
+ * providing React-friendly state access via Zustand.
+ */
+
 import { create } from "zustand";
-
-// Re-export network sync types and functions from dedicated module
-// The full implementation is in src/network/NetworkSync.ts
-export {
-    type DeltaTracker,
-    type GuestStateBuffer,
-    type GameStateDelta,
-    type EntitySnapshot,
-    createDeltaTracker,
-    createGuestStateBuffer,
-    generateDelta,
-    applyDelta,
-    getAdaptiveTick,
-    BASE_TICK_INTERVAL,
-    POSITION_THRESHOLD,
-    VELOCITY_THRESHOLD,
-    ROTATION_THRESHOLD,
-} from "../network/NetworkSync";
-
 import {
-    type DeltaTracker,
-    type GuestStateBuffer,
-    type GameStateDelta,
-    createDeltaTracker,
-    createGuestStateBuffer,
-    generateDelta,
-    applyDelta,
-    getAdaptiveTick,
-    BASE_TICK_INTERVAL,
-} from "../network/NetworkSync";
+    getNetworkManager,
+    resetNetworkManager,
+    type ConnectionState,
+    type NetworkRole,
+} from "../network/NetworkManager";
+import type {
+    PlayerInput,
+    ProjectileSpawn,
+    GameEvent,
+    CorrectionSnapshot,
+} from "../network/DeterministicSync";
 
-// Lazy import Trystero with MQTT strategy (works without HTTPS)
-let trysteroModule: any = null;
-const getTrystero = async () => {
-    if (!trysteroModule) {
-        // Use MQTT strategy which doesn't require WebCrypto
-        trysteroModule = await import("trystero/mqtt");
-    }
-    return trysteroModule;
-};
+// Re-export types for convenience
+export type { PlayerInput, ProjectileSpawn, GameEvent, CorrectionSnapshot };
+export type { ConnectionState, NetworkRole };
 
-// ICE server configuration for better WebRTC connectivity
-const EXPRESSTURN_URL = import.meta.env.VITE_TURN_URL || "";
-const EXPRESSTURN_USERNAME = import.meta.env.VITE_TURN_USERNAME || "";
-const EXPRESSTURN_PASSWORD = import.meta.env.VITE_TURN_PASSWORD || "";
-
-const rtcConfig: RTCConfiguration = {
-    iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        ...(EXPRESSTURN_URL
-            ? [
-                  {
-                      urls: [
-                          `turn:${EXPRESSTURN_URL}`,
-                          `turn:${EXPRESSTURN_URL}?transport=tcp`,
-                      ],
-                      username: EXPRESSTURN_USERNAME,
-                      credential: EXPRESSTURN_PASSWORD,
-                  },
-              ]
-            : [
-                  {
-                      urls: [
-                          "turn:openrelay.metered.ca:443",
-                          "turn:openrelay.metered.ca:443?transport=tcp",
-                      ],
-                      username: "openrelayproject",
-                      credential: "openrelayproject",
-                  },
-              ]),
-    ],
-    iceCandidatePoolSize: 4,
-};
+// ============================================================================
+// LEGACY TYPES (for backward compatibility during migration)
+// ============================================================================
 
 export type MultiplayerMode = "local" | "host" | "join";
-export type ConnectionState =
-    | "disconnected"
-    | "connecting"
-    | "connected"
-    | "error";
 
-interface PlayerState {
-    id: string;
-    position: { x: number; y: number };
-    rotation: number;
-    health: number;
-    isAlive: boolean;
-}
-
-// Full game state for synchronization
+// Legacy GameStateSync - kept for gradual migration
 export interface GameStateSync {
     players: {
         p1: {
@@ -132,13 +73,11 @@ export interface GameStateSync {
     wave: number;
     score: number;
     timestamp: number;
-    // Countdown/intermission state
     intermissionActive: boolean;
     countdown: number | null;
     pendingWave: number | null;
 }
 
-// Guest bullet spawn request
 export interface GuestBulletRequest {
     x: number;
     y: number;
@@ -147,48 +86,91 @@ export interface GuestBulletRequest {
     timestamp: number;
 }
 
-// Callback type for game state updates
-type GameStateCallback = (state: GameStateSync) => void;
-type GuestBulletCallback = (bullet: GuestBulletRequest) => void;
+// ============================================================================
+// STORE STATE
+// ============================================================================
 
 interface MultiplayerState {
+    // Connection state (synced from NetworkManager)
     mode: MultiplayerMode;
     connectionState: ConnectionState;
     roomCode: string | null;
     isHost: boolean;
     peerId: string | null;
     connectedPeers: string[];
-    playerStates: Record<string, PlayerState>;
     gameStarted: boolean;
+
+    // Callbacks for game integration
     onGameStart: (() => void) | null;
+    onRemoteInput: ((input: PlayerInput) => void) | null;
+    onProjectileSpawn: ((spawn: ProjectileSpawn) => void) | null;
+    onGameEvent: ((event: GameEvent) => void) | null;
+    onCorrection: ((snapshot: CorrectionSnapshot) => void) | null;
+
+    // Legacy compatibility
     latestGameState: GameStateSync | null;
-    onGameStateUpdate: GameStateCallback | null;
-    onGuestBullet: GuestBulletCallback | null;
-    // Delta encoding state
-    deltaTracker: DeltaTracker | null;
-    guestStateBuffer: GuestStateBuffer | null;
-    lastBroadcastTime: number;
-    adaptiveTickInterval: number;
+    onGameStateUpdate: ((state: GameStateSync) => void) | null;
+    onGuestBullet: ((bullet: GuestBulletRequest) => void) | null;
+    playerStates: Record<
+        string,
+        {
+            id: string;
+            position: { x: number; y: number };
+            health: number;
+            isAlive: boolean;
+        }
+    >;
+
     actions: {
         setMode: (mode: MultiplayerMode) => void;
         createRoom: () => Promise<string>;
         joinRoom: (roomCode: string) => Promise<void>;
         disconnect: () => void;
+        startGame: () => void;
+
+        // New deterministic API
+        sendInput: (input: PlayerInput) => void;
+        sendProjectileSpawn: (spawn: ProjectileSpawn) => void;
+        sendGameEvent: (event: GameEvent) => void;
+        sendCorrection: (snapshot: CorrectionSnapshot) => void;
+
+        // Callbacks
+        setOnGameStart: (callback: (() => void) | null) => void;
+        setOnRemoteInput: (
+            callback: ((input: PlayerInput) => void) | null
+        ) => void;
+        setOnProjectileSpawn: (
+            callback: ((spawn: ProjectileSpawn) => void) | null
+        ) => void;
+        setOnGameEvent: (callback: ((event: GameEvent) => void) | null) => void;
+        setOnCorrection: (
+            callback: ((snapshot: CorrectionSnapshot) => void) | null
+        ) => void;
+
+        // Legacy API (for gradual migration)
         updatePlayerState: (
             playerId: string,
-            state: Partial<PlayerState>
+            state: Partial<{
+                position: { x: number; y: number };
+                health: number;
+                isAlive: boolean;
+            }>
         ) => void;
         sendGameAction: (action: any) => void;
         sendGameState: (state: GameStateSync) => void;
-        sendGameStateDelta: (state: GameStateSync, entityCount: number) => void;
-        startGame: () => void;
-        setOnGameStart: (callback: (() => void) | null) => void;
-        setOnGameStateUpdate: (callback: GameStateCallback | null) => void;
-        setOnGuestBullet: (callback: GuestBulletCallback | null) => void;
+        setOnGameStateUpdate: (
+            callback: ((state: GameStateSync) => void) | null
+        ) => void;
+        setOnGuestBullet: (
+            callback: ((bullet: GuestBulletRequest) => void) | null
+        ) => void;
         sendGuestBullet: (bullet: GuestBulletRequest) => void;
-        requestFullSync: () => void;
     };
 }
+
+// ============================================================================
+// STORE IMPLEMENTATION
+// ============================================================================
 
 export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
     mode: "local",
@@ -197,417 +179,240 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
     isHost: false,
     peerId: null,
     connectedPeers: [],
-    playerStates: {},
     gameStarted: false,
+
     onGameStart: null,
+    onRemoteInput: null,
+    onProjectileSpawn: null,
+    onGameEvent: null,
+    onCorrection: null,
+
     latestGameState: null,
     onGameStateUpdate: null,
     onGuestBullet: null,
-    // Delta encoding state
-    deltaTracker: null,
-    guestStateBuffer: null,
-    lastBroadcastTime: 0,
-    adaptiveTickInterval: BASE_TICK_INTERVAL,
+    playerStates: {},
+
     actions: {
         setMode: (mode) => set({ mode }),
 
         createRoom: async () => {
-            const roomCode = Math.random()
-                .toString(36)
-                .substring(2, 8)
-                .toUpperCase();
+            const nm = getNetworkManager();
 
-            try {
-                set({
-                    connectionState: "connecting",
-                    roomCode,
-                    isHost: true,
-                    deltaTracker: createDeltaTracker(), // Initialize delta tracker for host
-                });
-
-                const { joinRoom, selfId } = await getTrystero();
-                const room = joinRoom(
-                    { appId: "quiet-quadrant", rtcConfig },
-                    roomCode
-                );
-                const myId = selfId;
-
-                // Set up event handlers
-                const [, getPlayerUpdate] = room.makeAction("playerUpdate");
-                const [, getGameAction] = room.makeAction("gameAction");
-                const [, getGameState] = room.makeAction("gameState");
-                const [, getGsd] = room.makeAction("gsd"); // "gsd" = game state delta (shortened for Trystero's 12-byte limit)
-                const [, getGuestBullet] = room.makeAction("guestBullet");
-                const [, getSyncRequest] = room.makeAction("syncReq"); // shortened
-
-                getGuestBullet((bullet: GuestBulletRequest) => {
-                    if (!bullet) return;
-                    const { onGuestBullet } = get();
-                    if (onGuestBullet) onGuestBullet(bullet);
-                });
-
-                getPlayerUpdate((data: any, peerId: string) => {
-                    if (!data) return;
-                    const { playerStates } = get();
-                    const existingState = playerStates[peerId] || {
-                        id: peerId,
-                        position: { x: 0, y: 0 },
-                        rotation: 0,
-                        health: 100,
-                        isAlive: true,
-                    };
-                    set({
-                        playerStates: {
-                            ...playerStates,
-                            [peerId]: { ...existingState, ...data },
-                        },
-                    });
-                });
-
-                getGameAction((action: any, peerId: string) => {
-                    console.log(
-                        "Received game action:",
-                        action,
-                        "from:",
-                        peerId
-                    );
-                    if (action?.type === "startGame") {
-                        set({ gameStarted: true });
-                        const { onGameStart } = get();
-                        if (onGameStart) onGameStart();
-                    }
-                });
-
-                // Legacy full state handler (for compatibility)
-                getGameState((state: GameStateSync) => {
-                    if (!state) return;
-                    set({ latestGameState: state });
-                    const { onGameStateUpdate } = get();
-                    if (onGameStateUpdate) onGameStateUpdate(state);
-                });
-
-                // Delta state handler
-                getGsd((delta: GameStateDelta) => {
-                    if (!delta) return;
-                    let { guestStateBuffer } = get();
-                    if (!guestStateBuffer) {
-                        guestStateBuffer = createGuestStateBuffer();
-                        set({ guestStateBuffer });
-                    }
-                    const reconstructed = applyDelta(guestStateBuffer, delta);
-                    if (reconstructed) {
-                        set({
-                            latestGameState: reconstructed,
-                            guestStateBuffer,
-                        });
-                        const { onGameStateUpdate } = get();
-                        if (onGameStateUpdate) onGameStateUpdate(reconstructed);
-                    }
-                });
-
-                // Handle sync requests from guest
-                getSyncRequest((_: any, peerId: string) => {
-                    console.log("Guest requested full sync:", peerId);
-                    const { deltaTracker } = get();
-                    if (deltaTracker) {
-                        // Force next broadcast to be a full sync
-                        deltaTracker.lastFullSync = 0;
-                    }
-                });
-
-                room.onPeerJoin((peerId: string) => {
-                    const { connectedPeers, deltaTracker } = get();
-                    // Force full sync when new peer joins
-                    if (deltaTracker) {
-                        deltaTracker.lastFullSync = 0;
-                    }
+            // Set up callbacks before connecting
+            nm.setCallbacks({
+                onPeerJoin: (peerId) => {
+                    const { connectedPeers } = get();
                     set({
                         connectedPeers: [...connectedPeers, peerId],
                         connectionState: "connected",
                     });
-                });
-
-                room.onPeerLeave((peerId: string) => {
-                    const { connectedPeers, playerStates } = get();
-                    const newPlayerStates = { ...playerStates };
-                    delete newPlayerStates[peerId];
-
+                },
+                onPeerLeave: (peerId) => {
+                    const { connectedPeers } = get();
                     set({
                         connectedPeers: connectedPeers.filter(
                             (id) => id !== peerId
                         ),
-                        playerStates: newPlayerStates,
                     });
-                });
+                },
+                onGameStart: () => {
+                    set({ gameStarted: true });
+                    const { onGameStart } = get();
+                    onGameStart?.();
+                },
+                onRemoteInput: (input) => {
+                    const { onRemoteInput } = get();
+                    onRemoteInput?.(input);
+                },
+                onProjectileSpawn: (spawn) => {
+                    const { onProjectileSpawn } = get();
+                    onProjectileSpawn?.(spawn);
+                },
+                onGameEvent: (event) => {
+                    const { onGameEvent } = get();
+                    onGameEvent?.(event);
 
-                // Store room reference for later use
-                (get() as any).room = room;
+                    // Legacy: handle guest bullet as game event
+                    if (event.type === "guestBullet") {
+                        const { onGuestBullet } = get();
+                        onGuestBullet?.(event.data as GuestBulletRequest);
+                    }
+                },
+                onCorrection: (snapshot) => {
+                    const { onCorrection } = get();
+                    onCorrection?.(snapshot);
+                },
+            });
 
+            set({ connectionState: "connecting", isHost: true });
+
+            try {
+                const roomCode = await nm.createRoom();
                 set({
-                    peerId: myId,
+                    roomCode,
+                    peerId: nm.peerId,
                     connectionState: "connected",
                 });
-
                 return roomCode;
             } catch (error) {
-                console.error("Failed to create room:", error);
                 set({ connectionState: "error" });
                 throw error;
             }
         },
 
         joinRoom: async (roomCode) => {
-            try {
-                set({
-                    connectionState: "connecting",
-                    roomCode,
-                    isHost: false,
-                    guestStateBuffer: createGuestStateBuffer(), // Initialize guest buffer
-                });
+            const nm = getNetworkManager();
 
-                const { joinRoom, selfId } = await getTrystero();
-                const room = joinRoom(
-                    { appId: "quiet-quadrant", rtcConfig },
-                    roomCode
-                );
-                const myId = selfId;
-
-                // Set up event handlers (same as host)
-                const [, getPlayerUpdate] = room.makeAction("playerUpdate");
-                const [, getGameAction] = room.makeAction("gameAction");
-                const [, getGameState] = room.makeAction("gameState");
-                const [, getGsd] = room.makeAction("gsd"); // "gsd" = game state delta
-
-                getPlayerUpdate((data: any, peerId: string) => {
-                    if (!data) return;
-                    const { playerStates } = get();
-                    const existingState = playerStates[peerId] || {
-                        id: peerId,
-                        position: { x: 0, y: 0 },
-                        rotation: 0,
-                        health: 100,
-                        isAlive: true,
-                    };
-                    set({
-                        playerStates: {
-                            ...playerStates,
-                            [peerId]: { ...existingState, ...data },
-                        },
-                    });
-                });
-
-                getGameAction((action: any, peerId: string) => {
-                    console.log(
-                        "Received game action:",
-                        action,
-                        "from:",
-                        peerId
-                    );
-                    if (action?.type === "startGame") {
-                        set({ gameStarted: true });
-                        const { onGameStart } = get();
-                        if (onGameStart) onGameStart();
-                    }
-                });
-
-                // Legacy full state handler
-                getGameState((state: GameStateSync) => {
-                    if (!state) return;
-                    set({ latestGameState: state });
-                    const { onGameStateUpdate } = get();
-                    if (onGameStateUpdate) onGameStateUpdate(state);
-                });
-
-                // Delta state handler - primary sync method
-                getGsd((delta: GameStateDelta) => {
-                    if (!delta) return;
-                    let { guestStateBuffer } = get();
-                    if (!guestStateBuffer) {
-                        guestStateBuffer = createGuestStateBuffer();
-                        set({ guestStateBuffer });
-                    }
-                    const reconstructed = applyDelta(guestStateBuffer, delta);
-                    if (reconstructed) {
-                        set({
-                            latestGameState: reconstructed,
-                            guestStateBuffer,
-                        });
-                        const { onGameStateUpdate } = get();
-                        if (onGameStateUpdate) onGameStateUpdate(reconstructed);
-                    }
-                });
-
-                room.onPeerJoin((peerId: string) => {
+            // Set up callbacks
+            nm.setCallbacks({
+                onPeerJoin: (peerId) => {
                     const { connectedPeers } = get();
                     set({
                         connectedPeers: [...connectedPeers, peerId],
                         connectionState: "connected",
                     });
-                });
-
-                room.onPeerLeave((peerId: string) => {
-                    const { connectedPeers, playerStates } = get();
-                    const newPlayerStates = { ...playerStates };
-                    delete newPlayerStates[peerId];
-
+                },
+                onPeerLeave: (peerId) => {
+                    const { connectedPeers } = get();
                     set({
                         connectedPeers: connectedPeers.filter(
                             (id) => id !== peerId
                         ),
-                        playerStates: newPlayerStates,
                     });
-                });
+                },
+                onGameStart: () => {
+                    set({ gameStarted: true });
+                    const { onGameStart } = get();
+                    onGameStart?.();
+                },
+                onRemoteInput: (input) => {
+                    const { onRemoteInput } = get();
+                    onRemoteInput?.(input);
+                },
+                onProjectileSpawn: (spawn) => {
+                    const { onProjectileSpawn } = get();
+                    onProjectileSpawn?.(spawn);
+                },
+                onGameEvent: (event) => {
+                    const { onGameEvent } = get();
+                    onGameEvent?.(event);
+                },
+                onCorrection: (snapshot) => {
+                    const { onCorrection } = get();
+                    onCorrection?.(snapshot);
+                },
+            });
 
-                // Store room reference for later use
-                (get() as any).room = room;
+            set({ connectionState: "connecting", isHost: false, roomCode });
 
+            try {
+                await nm.joinRoom(roomCode);
                 set({
-                    peerId: myId,
+                    peerId: nm.peerId,
                     connectionState: "connected",
                 });
             } catch (error) {
-                console.error("Failed to join room:", error);
                 set({ connectionState: "error" });
                 throw error;
             }
         },
 
         disconnect: () => {
-            const room = (get() as any).room;
-            if (room) {
-                room.leave();
-            }
+            resetNetworkManager();
             set({
                 connectionState: "disconnected",
                 roomCode: null,
                 isHost: false,
                 peerId: null,
                 connectedPeers: [],
+                gameStarted: false,
                 playerStates: {},
-                deltaTracker: null,
-                guestStateBuffer: null,
-                lastBroadcastTime: 0,
-                adaptiveTickInterval: BASE_TICK_INTERVAL,
+                latestGameState: null,
             });
-            (get() as any).room = null;
         },
 
+        startGame: () => {
+            const nm = getNetworkManager();
+            const { isHost } = get();
+            if (isHost) {
+                nm.signalGameStart();
+            }
+            set({ gameStarted: true });
+        },
+
+        // New deterministic API
+        sendInput: (input) => {
+            const nm = getNetworkManager();
+            nm.sendLocalInput(input);
+        },
+
+        sendProjectileSpawn: (spawn) => {
+            const nm = getNetworkManager();
+            nm.sendProjectileSpawn(spawn);
+        },
+
+        sendGameEvent: (event) => {
+            const nm = getNetworkManager();
+            nm.sendGameEvent(event);
+        },
+
+        sendCorrection: (snapshot) => {
+            const nm = getNetworkManager();
+            nm.sendCorrectionSnapshot(snapshot);
+        },
+
+        // Callback setters
+        setOnGameStart: (callback) => set({ onGameStart: callback }),
+        setOnRemoteInput: (callback) => set({ onRemoteInput: callback }),
+        setOnProjectileSpawn: (callback) =>
+            set({ onProjectileSpawn: callback }),
+        setOnGameEvent: (callback) => set({ onGameEvent: callback }),
+        setOnCorrection: (callback) => set({ onCorrection: callback }),
+
+        // Legacy API
         updatePlayerState: (playerId, state) => {
-            const { playerStates, peerId } = get();
-            const existingState = playerStates[playerId] || {
+            const { playerStates } = get();
+            const existing = playerStates[playerId] || {
                 id: playerId,
                 position: { x: 0, y: 0 },
                 health: 100,
                 isAlive: true,
             };
-            const newState = { ...existingState, ...state };
-
             set({
                 playerStates: {
                     ...playerStates,
-                    [playerId]: newState,
+                    [playerId]: { ...existing, ...state },
                 },
             });
-
-            // Send update to peers if we have a room and it's our own state
-            const room = (get() as any).room;
-            if (room && playerId === peerId) {
-                const [sendPlayerUpdate] = room.makeAction("playerUpdate");
-                sendPlayerUpdate(state);
-            }
         },
 
         sendGameAction: (action) => {
-            const room = (get() as any).room;
-            if (room) {
-                const [sendGameAction] = room.makeAction("gameAction");
-                sendGameAction(action);
-            } else {
-                console.log("Sending game action:", action);
-            }
+            const nm = getNetworkManager();
+            nm.sendGameEvent({
+                tick: nm.currentTick,
+                type: action.type,
+                data: action,
+            });
         },
 
-        sendGameState: (state: GameStateSync) => {
-            const room = (get() as any).room;
-            if (room) {
-                const [sendGameState] = room.makeAction("gameState");
-                sendGameState(state);
-            }
+        sendGameState: (_state) => {
+            // No-op in new architecture - state is derived from inputs
+            console.warn(
+                "sendGameState is deprecated - use input-based sync instead"
+            );
         },
 
-        // New delta-based sync method - primary sync for online play
-        sendGameStateDelta: (state: GameStateSync, entityCount: number) => {
-            const room = (get() as any).room;
-            if (!room) return;
+        setOnGameStateUpdate: (callback) =>
+            set({ onGameStateUpdate: callback }),
+        setOnGuestBullet: (callback) => set({ onGuestBullet: callback }),
 
-            const now = Date.now();
-            const { deltaTracker, lastBroadcastTime, adaptiveTickInterval } =
-                get();
-
-            // Calculate adaptive tick interval based on entity count
-            const newTickInterval = getAdaptiveTick(entityCount);
-            if (newTickInterval !== adaptiveTickInterval) {
-                set({ adaptiveTickInterval: newTickInterval });
-            }
-
-            // Check if enough time has passed
-            if (now - lastBroadcastTime < adaptiveTickInterval) {
-                return;
-            }
-
-            if (!deltaTracker) {
-                // Fallback to full state if no tracker
-                const [sendGameState] = room.makeAction("gameState");
-                sendGameState(state);
-                set({ lastBroadcastTime: now });
-                return;
-            }
-
-            // Generate and send delta
-            const delta = generateDelta(deltaTracker, state);
-            const [sendGsd] = room.makeAction("gsd");
-            sendGsd(delta);
-            set({ lastBroadcastTime: now });
-        },
-
-        startGame: () => {
-            const { isHost, actions } = get();
-            if (isHost) {
-                // Host sends start signal to guest
-                actions.sendGameAction({ type: "startGame" });
-            }
-            set({ gameStarted: true });
-        },
-
-        setOnGameStart: (callback) => {
-            set({ onGameStart: callback });
-        },
-
-        setOnGameStateUpdate: (callback) => {
-            set({ onGameStateUpdate: callback });
-        },
-
-        setOnGuestBullet: (callback) => {
-            set({ onGuestBullet: callback });
-        },
-
-        sendGuestBullet: (bullet: GuestBulletRequest) => {
-            const room = (get() as any).room;
-            if (room) {
-                const [sendGuestBullet] = room.makeAction("guestBullet");
-                sendGuestBullet(bullet);
-            }
-        },
-
-        // Guest can request a full sync if state seems corrupted
-        requestFullSync: () => {
-            const room = (get() as any).room;
-            if (room) {
-                const [sendSyncRequest] = room.makeAction("syncRequest");
-                sendSyncRequest({ type: "fullSync" });
-                // Reset guest buffer to prepare for fresh state
-                set({ guestStateBuffer: createGuestStateBuffer() });
-            }
+        sendGuestBullet: (bullet) => {
+            const nm = getNetworkManager();
+            nm.sendGameEvent({
+                tick: nm.currentTick,
+                type: "guestBullet",
+                data: bullet,
+            });
         },
     },
 }));

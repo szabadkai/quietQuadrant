@@ -16,7 +16,11 @@ import {
     useMultiplayerStore,
     type GameStateSync,
     type GuestBulletRequest,
+    type PlayerInput,
+    type ProjectileSpawn,
+    type CorrectionSnapshot,
 } from "../../state/useMultiplayerStore";
+import { getNetworkManager } from "../../network/NetworkManager";
 import { useMetaStore } from "../../state/useMetaStore";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
@@ -137,6 +141,10 @@ export class MainScene extends Phaser.Scene {
     private latencyEstimator = new LatencyEstimator();
     private lastNetworkUpdateTime = 0;
 
+    // Input-based networking state
+    private nextProjectileId = 1;
+    private remotePlayerInput: PlayerInput | null = null;
+
     // Scratch vectors to avoid per-frame allocations
     private readonly _scratchVec = new Phaser.Math.Vector2();
     private readonly _scratchVec2 = new Phaser.Math.Vector2();
@@ -256,6 +264,7 @@ export class MainScene extends Phaser.Scene {
         // Set up guest bullet handler for online host
         if (this.runMode === "online") {
             this.setupGuestBulletHandler();
+            this.setupInputBasedNetworking();
         }
 
         this.beginWaveIntermission(0);
@@ -369,8 +378,8 @@ export class MainScene extends Phaser.Scene {
         const isMobileInput = this._frameCache.isMobile;
 
         if (isOnlineGuest) {
-            // Guest: Apply received game state, handle local input including shooting
-            this.applyReceivedGameState();
+            // Guest: Apply remote inputs, run local simulation
+            this.applyRemoteInputs(dt);
             // Find local pilot and handle movement + shooting
             controlSnapshots.forEach(({ pilot, binding, controls }) => {
                 if (binding.type === "keyboardMouse") {
@@ -382,22 +391,24 @@ export class MainScene extends Phaser.Scene {
                             !isMobileInput &&
                             this.isPointerDown());
                     this.updateChargeState(pilot, dt, fireHeld);
-                    // Guest sends bullet requests to host instead of spawning locally
-                    this.handleGuestShooting(
+                    // Guest spawns bullets locally and broadcasts spawn event
+                    this.handleShootingWithBroadcast(
                         pilot,
                         controls,
                         binding,
-                        fireHeld
+                        fireHeld,
+                        "guest"
                     );
-                    this.broadcastLocalPilotPosition(pilot);
+                    // Broadcast input to host
+                    this.broadcastLocalInput(pilot, controls, fireHeld);
                 }
             });
         } else {
             // Host or local: Run full simulation
             controlSnapshots.forEach(({ pilot, binding, controls }) => {
-                // Handle remote players - sync their position from multiplayer store
+                // Handle remote players - apply their inputs
                 if (binding.type === "remote") {
-                    this.syncRemotePilot(pilot, binding);
+                    this.applyRemoteInputToPilot(pilot, dt);
                 } else {
                     this.handlePlayerMovement(pilot, dt, controls, binding);
                     this.updateMomentum(pilot, dt, controls, binding);
@@ -407,24 +418,33 @@ export class MainScene extends Phaser.Scene {
                             !isMobileInput &&
                             this.isPointerDown());
                     this.updateChargeState(pilot, dt, fireHeld);
-                    this.handleShooting(pilot, controls, binding, fireHeld);
+                    // Host spawns bullets locally and broadcasts spawn event
+                    if (this.runMode === "online") {
+                        this.handleShootingWithBroadcast(
+                            pilot,
+                            controls,
+                            binding,
+                            fireHeld,
+                            "host"
+                        );
+                        // Broadcast input to guest
+                        this.broadcastLocalInput(pilot, controls, fireHeld);
+                    } else {
+                        this.handleShooting(pilot, controls, binding, fireHeld);
+                    }
                 }
             });
 
-            // Host broadcasts game state to guest
+            // Host sends correction snapshots periodically
             if (this.runMode === "online" && isHost) {
-                this.broadcastGameState();
+                this.maybeSendCorrectionSnapshot();
             }
         }
 
         this.tickShieldTimers();
         controlSnapshots.forEach(({ pilot }) => this.updateShieldVisual(pilot));
 
-        // Guest skips simulation - it receives state from host
-        if (isOnlineGuest) {
-            return;
-        }
-
+        // Both host and guest run simulation (deterministic)
         this.handleEnemies();
         this.handleHeatseekingProjectiles(dt);
         this.handleProjectileBounds();
@@ -874,7 +894,10 @@ export class MainScene extends Phaser.Scene {
         return this.readKeyboardControls(pilot);
     }
 
-    private syncRemotePilot(pilot: PilotRuntime, binding: ControlBinding) {
+    // @ts-ignore - Legacy method kept for reference
+    private _syncRemotePilot(pilot: PilotRuntime, binding: ControlBinding) {
+        // Legacy method - kept for backward compatibility
+        // New code uses applyRemoteInputToPilot instead
         if (binding.type !== "remote") return;
 
         const { playerStates, peerId } = useMultiplayerStore.getState();
@@ -911,10 +934,353 @@ export class MainScene extends Phaser.Scene {
         }
     }
 
+    // ========================================================================
+    // INPUT-BASED NETWORKING (New deterministic sync)
+    // ========================================================================
+
+    /** Broadcast local player input to remote peer */
+    private broadcastLocalInput(
+        _pilot: PilotRuntime,
+        controls: GamepadControlState,
+        fireHeld: boolean
+    ): void {
+        const nm = getNetworkManager();
+        if (!nm.isConnected || !nm.shouldSendInput()) return;
+
+        const tick = nm.currentTick;
+
+        const input: PlayerInput = {
+            tick,
+            moveX: controls.move.x,
+            moveY: controls.move.y,
+            aimX: controls.aim.x,
+            aimY: controls.aim.y,
+            fire: fireHeld || controls.fireActive,
+            dash: controls.dashPressed,
+        };
+
+        const { actions } = useMultiplayerStore.getState();
+        actions.sendInput(input);
+    }
+
+    /** Apply remote player's input to their pilot (host-side) */
+    private applyRemoteInputToPilot(pilot: PilotRuntime, _dt: number): void {
+        const input = this.remotePlayerInput;
+        if (!input) return;
+
+        // Apply movement from input
+        const moveSpeed = this.playerStats.moveSpeed;
+        const body = pilot.sprite.body as Phaser.Physics.Arcade.Body;
+        if (body) {
+            body.setVelocity(input.moveX * moveSpeed, input.moveY * moveSpeed);
+        }
+
+        // Update aim direction
+        if (input.aimX !== 0 || input.aimY !== 0) {
+            pilot.lastAimDirection.set(input.aimX, input.aimY).normalize();
+            pilot.sprite.rotation = Math.atan2(input.aimY, input.aimX);
+        }
+    }
+
+    /** Apply remote inputs received from host (guest-side) */
+    private applyRemoteInputs(_dt: number): void {
+        const input = this.remotePlayerInput;
+        if (!input || !this.playerState) return;
+
+        // Apply host's input to P1 (host's ship)
+        const pilot = this.playerState;
+        const moveSpeed = this.playerStats.moveSpeed;
+        const body = pilot.sprite.body as Phaser.Physics.Arcade.Body;
+        if (body) {
+            body.setVelocity(input.moveX * moveSpeed, input.moveY * moveSpeed);
+        }
+
+        // Update aim direction
+        if (input.aimX !== 0 || input.aimY !== 0) {
+            pilot.lastAimDirection.set(input.aimX, input.aimY).normalize();
+            pilot.sprite.rotation = Math.atan2(input.aimY, input.aimX);
+        }
+    }
+
+    /** Handle shooting with projectile spawn broadcast */
+    private handleShootingWithBroadcast(
+        pilot: PilotRuntime,
+        controls: GamepadControlState,
+        binding: ControlBinding,
+        fireHeld: boolean,
+        ownerId: "host" | "guest"
+    ): void {
+        if (!this.isPilotActive(pilot)) return;
+        const fireRequested = fireHeld || controls.fireActive;
+        if (!fireRequested) return;
+
+        const useChargeMode = this.upgrades.capacitor.stacks > 0;
+        const isCharged = useChargeMode && pilot.charge.ready;
+        const dir = this.getAimDirection(
+            pilot,
+            controls,
+            binding.type === "keyboardMouse" ||
+                (this.runMode !== "twin" && this.runMode !== "online")
+        );
+        const spreadCount = this.playerStats.projectiles;
+        const spreadStepDeg = this.upgrades.spread.spreadDegrees;
+        const baseDamage = this.playerStats.damage;
+        const chargeDamageMultiplier = isCharged
+            ? 1 + this.upgrades.capacitor.damageBonus
+            : 1;
+        const sizeScale = isCharged ? 1 + this.upgrades.capacitor.sizeBonus : 1;
+        const pierce =
+            this.playerStats.pierce +
+            (isCharged ? this.upgrades.capacitor.chargePierceBonus : 0);
+        const bounce = this.playerStats.bounce;
+        const tags = this.buildProjectileTags(isCharged);
+        const fireRateBonus = 1 + pilot.momentum.bonus;
+        const adjustedFireRate =
+            this.playerStats.fireRate *
+            fireRateBonus *
+            (1 + this.getBerserkBonus());
+        const cooldown = 1000 / adjustedFireRate;
+        if (this.time.now < pilot.lastShotAt + cooldown) return;
+        if (!this.payBloodFuelCost()) return;
+        pilot.lastShotAt = this.time.now;
+        if (useChargeMode && isCharged) {
+            pilot.charge.ready = false;
+            pilot.charge.holdMs = 0;
+        }
+
+        soundManager.playSfx("shoot");
+        const nm = getNetworkManager();
+        const tick = nm.currentTick;
+        const projectileSpeed = this.playerStats.projectileSpeed;
+
+        for (let i = 0; i < spreadCount; i++) {
+            const offset =
+                spreadCount <= 1
+                    ? 0
+                    : (i - (spreadCount - 1) / 2) *
+                      Phaser.Math.DegToRad(spreadStepDeg);
+            const shotDir = this.applyInaccuracy(dir.clone().rotate(offset));
+
+            // Spawn bullet locally
+            this.spawnBullet({
+                x: pilot.sprite.x,
+                y: pilot.sprite.y,
+                dir: shotDir,
+                damage: baseDamage * chargeDamageMultiplier,
+                pierce,
+                bounce,
+                sizeMultiplier: sizeScale,
+                tags,
+                charged: isCharged,
+                sourceType: "primary",
+            });
+
+            // Broadcast projectile spawn event (fire-and-forget)
+            if (nm.isConnected) {
+                const spawn: ProjectileSpawn = {
+                    id: this.nextProjectileId++,
+                    tick,
+                    x: pilot.sprite.x,
+                    y: pilot.sprite.y,
+                    vx: shotDir.x * projectileSpeed,
+                    vy: shotDir.y * projectileSpeed,
+                    ownerId,
+                    seed: Math.floor(this.rng.next() * 65536),
+                };
+                const { actions } = useMultiplayerStore.getState();
+                actions.sendProjectileSpawn(spawn);
+            }
+        }
+
+        if (isCharged) {
+            this.spawnMuzzleFlash(pilot.sprite.x, pilot.sprite.y);
+        }
+    }
+
+    /** Handle remote projectile spawn (fire-and-forget) */
+    private handleRemoteProjectileSpawn(spawn: ProjectileSpawn): void {
+        const nm = getNetworkManager();
+        const ticksElapsed = nm.currentTick - spawn.tick;
+        const dt = Math.max(0, ticksElapsed / 60); // Assume 60Hz tick rate
+
+        // Calculate current position based on elapsed time
+        const currentX = spawn.x + spawn.vx * dt;
+        const currentY = spawn.y + spawn.vy * dt;
+
+        // Spawn bullet at predicted position
+        const dir = new Phaser.Math.Vector2(spawn.vx, spawn.vy).normalize();
+        this.spawnBullet({
+            x: currentX,
+            y: currentY,
+            dir,
+            damage: this.playerStats.damage,
+            pierce: this.playerStats.pierce,
+            bounce: this.playerStats.bounce,
+            tags: [],
+            charged: false,
+            sizeMultiplier: 1,
+            sourceType: "primary",
+        });
+    }
+
+    private lastCorrectionTime = 0;
+    private readonly CORRECTION_INTERVAL = 200; // 5Hz
+
+    /** Send correction snapshot (host only, periodic) */
+    private maybeSendCorrectionSnapshot(): void {
+        const now = this.time.now;
+        if (now - this.lastCorrectionTime < this.CORRECTION_INTERVAL) return;
+        this.lastCorrectionTime = now;
+
+        const nm = getNetworkManager();
+        if (!nm.isConnected || !nm.shouldSendSnapshot()) return;
+
+        const entities: CorrectionSnapshot["entities"] = [];
+
+        // Add player positions
+        if (this.playerState?.sprite.active) {
+            entities.push({
+                id: "p1",
+                x: this.playerState.sprite.x,
+                y: this.playerState.sprite.y,
+            });
+        }
+        if (this.playerTwoState?.sprite.active) {
+            entities.push({
+                id: "p2",
+                x: this.playerTwoState.sprite.x,
+                y: this.playerTwoState.sprite.y,
+            });
+        }
+
+        // Add enemy positions (only first 20 to limit packet size)
+        let enemyCount = 0;
+        this.enemies.getChildren().forEach((enemy: any) => {
+            if (enemy.active && enemyCount < 20) {
+                const syncId = enemy.getData("syncId") ?? enemyCount;
+                entities.push({
+                    id: `e${syncId}`,
+                    x: enemy.x,
+                    y: enemy.y,
+                });
+                enemyCount++;
+            }
+        });
+
+        const snapshot: CorrectionSnapshot = {
+            tick: nm.currentTick,
+            entities,
+        };
+
+        const { actions } = useMultiplayerStore.getState();
+        actions.sendCorrection(snapshot);
+    }
+
+    /** Apply correction snapshot (guest-side) */
+    private applyCorrectionSnapshot(snapshot: CorrectionSnapshot): void {
+        const CORRECTION_THRESHOLD = 50; // pixels
+
+        snapshot.entities.forEach((entity) => {
+            if (entity.id === "p1" && this.playerState) {
+                const dx = entity.x - this.playerState.sprite.x;
+                const dy = entity.y - this.playerState.sprite.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > CORRECTION_THRESHOLD) {
+                    // Snap to correct position if drift is too large
+                    this.playerState.sprite.x = entity.x;
+                    this.playerState.sprite.y = entity.y;
+                } else if (dist > 5) {
+                    // Smoothly interpolate for small corrections
+                    this.playerState.sprite.x = Phaser.Math.Linear(
+                        this.playerState.sprite.x,
+                        entity.x,
+                        0.3
+                    );
+                    this.playerState.sprite.y = Phaser.Math.Linear(
+                        this.playerState.sprite.y,
+                        entity.y,
+                        0.3
+                    );
+                }
+            } else if (entity.id === "p2" && this.playerTwoState) {
+                const dx = entity.x - this.playerTwoState.sprite.x;
+                const dy = entity.y - this.playerTwoState.sprite.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > CORRECTION_THRESHOLD) {
+                    this.playerTwoState.sprite.x = entity.x;
+                    this.playerTwoState.sprite.y = entity.y;
+                } else if (dist > 5) {
+                    this.playerTwoState.sprite.x = Phaser.Math.Linear(
+                        this.playerTwoState.sprite.x,
+                        entity.x,
+                        0.3
+                    );
+                    this.playerTwoState.sprite.y = Phaser.Math.Linear(
+                        this.playerTwoState.sprite.y,
+                        entity.y,
+                        0.3
+                    );
+                }
+            } else if (entity.id.startsWith("e")) {
+                // Enemy correction - find by sync ID
+                const syncId = parseInt(entity.id.slice(1), 10);
+                this.enemies.getChildren().forEach((enemy: any) => {
+                    if (enemy.active && enemy.getData("syncId") === syncId) {
+                        const dx = entity.x - enemy.x;
+                        const dy = entity.y - enemy.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > CORRECTION_THRESHOLD) {
+                            enemy.x = entity.x;
+                            enemy.y = entity.y;
+                        } else if (dist > 5) {
+                            enemy.x = Phaser.Math.Linear(
+                                enemy.x,
+                                entity.x,
+                                0.3
+                            );
+                            enemy.y = Phaser.Math.Linear(
+                                enemy.y,
+                                entity.y,
+                                0.3
+                            );
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    /** Set up network callbacks for input-based sync */
+    private setupInputBasedNetworking(): void {
+        const { actions } = useMultiplayerStore.getState();
+
+        // Handle remote input
+        actions.setOnRemoteInput((input: PlayerInput) => {
+            this.remotePlayerInput = input;
+        });
+
+        // Handle remote projectile spawn (fire-and-forget)
+        actions.setOnProjectileSpawn((spawn: ProjectileSpawn) => {
+            this.handleRemoteProjectileSpawn(spawn);
+        });
+
+        // Handle correction snapshots (guest only)
+        actions.setOnCorrection((snapshot: CorrectionSnapshot) => {
+            if (!useMultiplayerStore.getState().isHost) {
+                this.applyCorrectionSnapshot(snapshot);
+            }
+        });
+    }
+
+    // ========================================================================
+    // LEGACY NETWORKING (kept for backward compatibility, prefixed with _ to suppress warnings)
+    // ========================================================================
+
     private lastRemotePos?: { x: number; y: number };
     private lastGameStateBroadcast = 0;
 
-    private broadcastGameState() {
+    // @ts-ignore - Legacy method kept for reference
+    private _broadcastGameState() {
         const now = this.time.now;
         // Note: Adaptive tick interval is now handled in sendGameStateDelta
         // We still do a basic throttle here to avoid calling the function too often
@@ -1000,13 +1366,13 @@ export class MainScene extends Phaser.Scene {
             pendingWave: this.pendingWaveIndex,
         };
 
-        // Use delta-based sync with adaptive tick rate
-        const entityCount =
-            enemyData.length + bulletData.length + playerBulletData.length;
-        actions.sendGameStateDelta(gameState, entityCount);
+        // For now, use legacy sendGameState until full migration
+        // TODO: Replace with input-based sync
+        actions.sendGameState(gameState);
     }
 
-    private applyReceivedGameState() {
+    // @ts-ignore - Legacy method kept for reference
+    private _applyReceivedGameState() {
         const { latestGameState, isHost } = useMultiplayerStore.getState();
         if (!latestGameState || isHost) return;
 
@@ -1337,7 +1703,8 @@ export class MainScene extends Phaser.Scene {
     private lastBroadcastTime = 0;
     private readonly BROADCAST_INTERVAL = 16; // ~60fps
 
-    private broadcastLocalPilotPosition(pilot: PilotRuntime) {
+    // @ts-ignore - Legacy method kept for reference
+    private _broadcastLocalPilotPosition(pilot: PilotRuntime) {
         const now = this.time.now;
         if (now - this.lastBroadcastTime < this.BROADCAST_INTERVAL) return;
         this.lastBroadcastTime = now;
@@ -1358,7 +1725,8 @@ export class MainScene extends Phaser.Scene {
     private optimisticBulletIds: Set<number> = new Set(); // Track locally spawned bullets
     private nextOptimisticBulletId = -1; // Negative IDs for optimistic bullets
 
-    private handleGuestShooting(
+    // @ts-ignore - Legacy method kept for reference
+    private _handleGuestShooting(
         pilot: PilotRuntime,
         controls: GamepadControlState,
         _binding: ControlBinding,
