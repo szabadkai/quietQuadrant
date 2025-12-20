@@ -226,12 +226,8 @@ function registerShortcuts() {
         }
     });
 
-    // Escape to exit fullscreen
-    globalShortcut.register("Escape", () => {
-        if (mainWindow && mainWindow.isFullScreen()) {
-            mainWindow.setFullScreen(false);
-        }
-    });
+    // Note: Escape is handled in the renderer process for menu navigation.
+    // Fullscreen can be exited via F11 or the game's pause menu.
 }
 
 // App ready
