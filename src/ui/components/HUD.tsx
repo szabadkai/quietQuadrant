@@ -36,6 +36,10 @@ export const HUD = () => {
 		setSeasonInfo(gameManager.getSeasonInfo());
 	}, [currentSeed]);
 
+	const currentAffix = seasonInfo?.affix
+		? AFFIXES.find((a) => a.id === seasonInfo.affix?.id)
+		: null;
+
 	return (
 		<div className="hud">
 			<div className="hud-row">
@@ -81,7 +85,10 @@ export const HUD = () => {
 					</div>
 				</div>
 				{seasonInfo && (
-					<div className="hud-block compact affix-block">
+					<div 
+						className="hud-block compact affix-block"
+						title={currentAffix?.description ?? ""}
+					>
 						<div className="hud-top-line">
 							<span className="label">Weekly</span>
 							<span className="tiny truncate">Seed {seasonInfo.seedId}</span>
@@ -94,10 +101,7 @@ export const HUD = () => {
 									: "Boss: —"}
 							</span>
 							<span className="tiny truncate" style={{ textAlign: "right" }}>
-								{seasonInfo.affix
-									? (AFFIXES.find((a) => a.id === seasonInfo.affix?.id)?.name ??
-										seasonInfo.affix.id)
-									: "Affix: —"}
+								{currentAffix?.name ?? "Affix: —"}
 							</span>
 						</div>
 					</div>

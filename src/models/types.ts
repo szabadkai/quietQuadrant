@@ -120,9 +120,26 @@ export interface WeeklyAffix {
     id: string;
     name: string;
     description: string;
+    // Enemy modifiers
     enemyHealthMultiplier?: number;
     enemySpeedMultiplier?: number;
+    enemyDamageMultiplier?: number;
+    enemyProjectileSpeedMultiplier?: number;
+    // Player modifiers
+    playerDamageMultiplier?: number;
+    playerSpeedMultiplier?: number;
+    dashCooldownMultiplier?: number;
+    // XP and upgrades
+    xpMultiplier?: number;
     rareUpgradeBonus?: number;
+    legendaryUpgradeBonus?: number;
+    upgradeChoices?: number; // Override default 3 choices
+    // Wave modifiers
+    waveEnemyCountMultiplier?: number;
+    eliteChanceBonus?: number; // Extra chance for elites to spawn
+    // Boss modifiers
+    bossHealthMultiplier?: number;
+    bossProjectileSpeedMultiplier?: number;
 }
 
 export type PerSeedBest = Record<string, RunSummary>;

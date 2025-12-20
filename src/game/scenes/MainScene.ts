@@ -1195,8 +1195,9 @@ export class MainScene extends Phaser.Scene {
     }
 
     private defaultAbility(): AbilityState {
+        const dashCooldownMult = this.affix?.dashCooldownMultiplier ?? 1;
         return {
-            dashCooldownMs: 1600,
+            dashCooldownMs: 1600 * dashCooldownMult,
             dashDurationMs: 220,
             nextDashAt: 0,
             activeUntil: 0,
@@ -2051,6 +2052,17 @@ export class MainScene extends Phaser.Scene {
             critChance: 0.05,
             critMultiplier: 2,
         };
+
+        // Apply affix modifiers to player stats
+        if (this.affix) {
+            if (this.affix.playerDamageMultiplier) {
+                this.playerStats.damage *= this.affix.playerDamageMultiplier;
+            }
+            if (this.affix.playerSpeedMultiplier) {
+                this.playerStats.moveSpeed *= this.affix.playerSpeedMultiplier;
+            }
+        }
+
         this.chargeState = {
             ready: false,
             holdMs: 0,
@@ -4092,7 +4104,9 @@ export class MainScene extends Phaser.Scene {
     }
 
     private collectXp(pickup: Phaser.Physics.Arcade.Image) {
-        const value = pickup.getData("value") as number;
+        const baseValue = pickup.getData("value") as number;
+        const xpMult = this.affix?.xpMultiplier ?? 1;
+        const value = Math.round(baseValue * xpMult);
         pickup.destroy();
         soundManager.playSfx("xpPickup");
         this.tryShieldPickup();
@@ -4356,18 +4370,25 @@ export class MainScene extends Phaser.Scene {
         });
         const picks: UpgradeDefinition[] = [];
         const rareBonus = this.affix?.rareUpgradeBonus ?? 0;
+        const legendaryBonus = this.affix?.legendaryUpgradeBonus ?? 0;
+        const numChoices = this.affix?.upgradeChoices ?? 3;
         const weightFor = (u: UpgradeDefinition) => {
-            const rarityBase =
-                u.rarity === "rare"
-                    ? UPGRADE_RARITY_ODDS.rare * (1 + rareBonus)
-                    : UPGRADE_RARITY_ODDS[u.rarity] ?? 0;
+            let rarityBase: number;
+            if (u.rarity === "rare") {
+                rarityBase = UPGRADE_RARITY_ODDS.rare * (1 + rareBonus);
+            } else if (u.rarity === "legendary") {
+                rarityBase =
+                    UPGRADE_RARITY_ODDS.legendary * (1 + legendaryBonus);
+            } else {
+                rarityBase = UPGRADE_RARITY_ODDS[u.rarity] ?? 0;
+            }
             return Math.max(0, (u.dropWeight ?? 1) * rarityBase);
         };
         const weightedPool = available
             .map((u) => ({ def: u, weight: weightFor(u) }))
             .filter((entry) => entry.weight > 0);
 
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < numChoices; i++) {
             if (weightedPool.length === 0) break;
             const totalWeight = weightedPool.reduce(
                 (sum, entry) => sum + entry.weight,
@@ -4894,7 +4915,11 @@ export class MainScene extends Phaser.Scene {
             basePool[loopIndex % basePool.length] ??
             WAVES[Math.max(0, WAVES.length - 2)];
         // Enhanced elite frequency for infinite mode (Requirement 5.4)
-        const eliteBonusChance = Math.min(0.5, 0.15 + overflow * 0.05);
+        const affixEliteBonus = this.affix?.eliteChanceBonus ?? 0;
+        const eliteBonusChance = Math.min(
+            0.5,
+            0.15 + overflow * 0.05 + affixEliteBonus
+        );
 
         return template.enemies.map((spawn) => {
             if (spawn.kind === "boss") return spawn;
@@ -4925,14 +4950,18 @@ export class MainScene extends Phaser.Scene {
     }
 
     private spawnWaveEnemies(spawns: EnemySpawn[]) {
+        const waveCountMult = this.affix?.waveEnemyCountMultiplier ?? 1;
+        const eliteBonus = this.affix?.eliteChanceBonus ?? 0;
         const randomized = spawns.map((spawn) => {
             if (spawn.kind === "boss") return spawn;
             const delta = this.randBetween(-1, 1);
-            const count = Math.max(1, spawn.count + delta);
+            const baseCount = Math.max(1, spawn.count + delta);
+            const count = Math.round(baseCount * waveCountMult);
+            const baseEliteChance = 0.12;
             const elite =
                 spawn.elite !== undefined
                     ? spawn.elite
-                    : this.rng.next() < 0.12 &&
+                    : this.rng.next() < baseEliteChance + eliteBonus &&
                       (spawn.kind === "watcher" || spawn.kind === "mass");
             return { ...spawn, count, elite };
         });
@@ -4980,6 +5009,9 @@ export class MainScene extends Phaser.Scene {
         const stats = getEnemyDefinition(kind as any, elite);
         const enemyHealthMult = this.affix?.enemyHealthMultiplier ?? 1;
         const enemySpeedMult = this.affix?.enemySpeedMultiplier ?? 1;
+        const enemyDamageMult = this.affix?.enemyDamageMultiplier ?? 1;
+        const enemyProjSpeedMult =
+            this.affix?.enemyProjectileSpeedMultiplier ?? 1;
         const maxHealth =
             stats.health * enemyHealthMult * this.enemyHealthScale;
         enemy.setData("kind", kind);
@@ -4992,10 +5024,12 @@ export class MainScene extends Phaser.Scene {
         );
         enemy.setData(
             "projectileSpeed",
-            stats.projectileSpeed ? stats.projectileSpeed * this.difficulty : 0
+            stats.projectileSpeed
+                ? stats.projectileSpeed * this.difficulty * enemyProjSpeedMult
+                : 0
         );
         enemy.setData("nextFire", this.time.now + this.randBetween(400, 1200));
-        enemy.setData("damage", stats.damage);
+        enemy.setData("damage", stats.damage * enemyDamageMult);
         enemy.setData("elite", elite || false);
         enemy.setData("eliteBehaviors", stats.eliteBehaviors || []);
 
@@ -5080,15 +5114,20 @@ export class MainScene extends Phaser.Scene {
         this.boss.setData("kind", "boss");
         const base = getEnemyDefinition("boss");
         const tuning = this.bossTemplate?.tuning ?? {};
+        const affixBossHealthMult = this.affix?.bossHealthMultiplier ?? 1;
+        const affixBossProjSpeedMult =
+            this.affix?.bossProjectileSpeedMultiplier ?? 1;
         const health =
             base.health *
             (tuning.healthMultiplier ?? 1) *
+            affixBossHealthMult *
             this.enemyHealthScale;
         const speed = base.speed * (tuning.speedMultiplier ?? 1);
         const fireCooldownBase = base.fireCooldown ?? 1.2;
         const fireRateMultiplier = tuning.fireRateMultiplier ?? 1;
         const projSpeedBase = base.projectileSpeed ?? 0;
-        const projectileSpeedMultiplier = tuning.projectileSpeedMultiplier ?? 1;
+        const projectileSpeedMultiplier =
+            (tuning.projectileSpeedMultiplier ?? 1) * affixBossProjSpeedMult;
 
         this.bossMaxHealth = health;
         this.boss.setData("health", health);
@@ -5205,6 +5244,68 @@ export class MainScene extends Phaser.Scene {
 
     private pickPerimeterSpawn() {
         const margin = 40;
+        const minSpacing = 60; // Minimum distance between spawned enemies
+        const maxAttempts = 10; // Prevent infinite loops
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const edges = [
+                {
+                    x: this.randBetween(
+                        this.screenBounds.left,
+                        this.screenBounds.right
+                    ),
+                    y: this.screenBounds.top + margin,
+                    side: "top" as const,
+                },
+                {
+                    x: this.randBetween(
+                        this.screenBounds.left,
+                        this.screenBounds.right
+                    ),
+                    y: this.screenBounds.bottom - margin,
+                    side: "bottom" as const,
+                },
+                {
+                    x: this.screenBounds.left + margin,
+                    y: this.randBetween(
+                        this.screenBounds.top,
+                        this.screenBounds.bottom
+                    ),
+                    side: "left" as const,
+                },
+                {
+                    x: this.screenBounds.right - margin,
+                    y: this.randBetween(
+                        this.screenBounds.top,
+                        this.screenBounds.bottom
+                    ),
+                    side: "right" as const,
+                },
+            ];
+            const candidate = this.randChoice(edges);
+
+            // Check distance from existing enemies
+            let tooClose = false;
+            this.enemies.getChildren().forEach((child) => {
+                const enemy = child as Phaser.Physics.Arcade.Image;
+                if (!enemy.active) return;
+                const dist = Phaser.Math.Distance.Between(
+                    candidate.x,
+                    candidate.y,
+                    enemy.x,
+                    enemy.y
+                );
+                if (dist < minSpacing) {
+                    tooClose = true;
+                }
+            });
+
+            if (!tooClose) {
+                return candidate;
+            }
+        }
+
+        // Fallback: return a random position if no valid spot found
         const edges = [
             {
                 x: this.randBetween(
