@@ -2597,6 +2597,7 @@ button.tiny {
 	grid-template-columns: repeat(3, 1fr);
 	gap: 16px;
 	margin-bottom: 20px;
+	padding-top: 16px;
 }
 
 @media (max-width: 650px) {

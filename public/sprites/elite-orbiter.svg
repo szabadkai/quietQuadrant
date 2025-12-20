@@ -1,22 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-    <!-- Double orbital rings -->
-    <ellipse cx="32" cy="32" rx="24" ry="10" fill="none" stroke="#ff6b47" stroke-width="2" opacity="0.7"
-        transform="rotate(-20 32 32)" />
-    <ellipse cx="32" cy="32" rx="20" ry="6" fill="none" stroke="#4de8b0" stroke-width="2" opacity="0.5"
-        transform="rotate(20 32 32)" />
-    <!-- Main body - sleek satellite shape -->
-    <ellipse cx="32" cy="32" rx="12" ry="16" fill="#0a2620" stroke="#ff6b47" stroke-width="3" />
-    <!-- Solar panels -->
-    <rect x="6" y="26" width="14" height="12" fill="#1a4a3a" stroke="#ff6b47" stroke-width="2" />
-    <rect x="44" y="26" width="14" height="12" fill="#1a4a3a" stroke="#ff6b47" stroke-width="2" />
-    <!-- Panel lines -->
-    <line x1="10" y1="26" x2="10" y2="38" stroke="#4de8b0" stroke-width="1" opacity="0.8" />
-    <line x1="14" y1="26" x2="14" y2="38" stroke="#4de8b0" stroke-width="1" opacity="0.8" />
-    <line x1="48" y1="26" x2="48" y2="38" stroke="#4de8b0" stroke-width="1" opacity="0.8" />
-    <line x1="52" y1="26" x2="52" y2="38" stroke="#4de8b0" stroke-width="1" opacity="0.8" />
-    <!-- Core eye - elite glow -->
-    <circle cx="32" cy="28" r="6" fill="#ff6b47" />
-    <circle cx="32" cy="28" r="3" fill="#0a2620" />
-    <!-- Thruster - enhanced -->
-    <polygon points="26,46 32,54 38,46" fill="#ff6b47" opacity="0.9" />
+    <!-- Body - triangle -->
+    <polygon points="32,14 50,46 14,46" fill="#2a0f0a" stroke="#ff6b47" stroke-width="4" />
+    <!-- Wings -->
+    <rect x="10" y="34" width="10" height="6" fill="#ff6b47" />
+    <rect x="44" y="34" width="10" height="6" fill="#ff6b47" />
+    <!-- Core -->
+    <circle cx="32" cy="34" r="6" fill="#ff6b47" />
+    <circle cx="32" cy="34" r="3" fill="#2a0f0a" />
 </svg>
