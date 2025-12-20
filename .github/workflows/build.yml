@@ -8,6 +8,12 @@ on:
 
 permissions:
     contents: write
+    pages: write
+    id-token: write
+
+concurrency:
+    group: "pages"
+    cancel-in-progress: false
 
 jobs:
     build:
@@ -82,10 +88,11 @@ jobs:
               run: |
                   npm version ${{ steps.version.outputs.NEW_VERSION }} --no-git-tag-version
 
-            - name: Build
+            - name: Build for GitHub Pages
               env:
                   VITE_BUILD_VERSION: ${{ steps.version.outputs.NEW_VERSION }}
-              run: npm run build
+                  BUILD_TARGET: pages
+              run: npm run build:pages
 
             - name: Commit version bump
               if: github.event_name == 'push' && steps.version.outputs.BUMP != 'none'
@@ -97,3 +104,25 @@ jobs:
                   git tag "v${{ steps.version.outputs.NEW_VERSION }}"
                   git push
                   git push --tags
+
+            - name: Setup Pages
+              if: github.event_name == 'push'
+              uses: actions/configure-pages@v4
+
+            - name: Upload artifact
+              if: github.event_name == 'push'
+              uses: actions/upload-pages-artifact@v3
+              with:
+                  path: "./docs"
+
+    deploy:
+        if: github.event_name == 'push'
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        runs-on: ubuntu-latest
+        needs: build
+        steps:
+            - name: Deploy to GitHub Pages
+              id: deployment
+              uses: actions/deploy-pages@v4
