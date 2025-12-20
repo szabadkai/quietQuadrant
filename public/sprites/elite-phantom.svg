@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+    <!-- Ghostly outer aura - elite enhanced -->
+    <ellipse cx="32" cy="34" rx="22" ry="24" fill="#2a0a3e" opacity="0.7" />
+    <!-- Main body - ethereal shape with elite border -->
+    <path
+        d="M32 10 C46 10 52 22 52 36 C52 46 48 54 44 54 L40 48 L36 54 L32 48 L28 54 L24 48 L20 54 C16 54 12 46 12 36 C12 22 18 10 32 10 Z"
+        fill="#3d2060" stroke="#ff6b47" stroke-width="3" />
+    <!-- Inner glow - brighter -->
+    <ellipse cx="32" cy="28" rx="12" ry="14" fill="#5a3d8a" opacity="0.9" />
+    <!-- Eyes - elite glow -->
+    <ellipse cx="24" cy="26" rx="5" ry="6" fill="#ff6b47" />
+    <ellipse cx="40" cy="26" rx="5" ry="6" fill="#ff6b47" />
+    <!-- Eye cores -->
+    <circle cx="24" cy="27" r="2" fill="#ffe0d0" />
+    <circle cx="40" cy="27" r="2" fill="#ffe0d0" />
+    <!-- Wispy trails - more prominent -->
+    <path d="M18 42 Q12 52 16 58" stroke="#ff6b47" stroke-width="3" fill="none" opacity="0.6" />
+    <path d="M46 42 Q52 52 48 58" stroke="#ff6b47" stroke-width="3" fill="none" opacity="0.6" />
+    <path d="M32 50 Q32 56 32 60" stroke="#9b6dff" stroke-width="2" fill="none" opacity="0.5" />
+</svg>

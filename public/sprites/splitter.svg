@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+    <!-- Outer shell segments -->
+    <path d="M32 8 L44 20 L44 44 L32 56 L20 44 L20 20 Z" fill="#2a1a0a" stroke="#ff9944" stroke-width="2" />
+    <!-- Crack lines showing it can split -->
+    <line x1="32" y1="8" x2="32" y2="56" stroke="#ff6622" stroke-width="1" stroke-dasharray="4,2" opacity="0.8" />
+    <line x1="20" y1="32" x2="44" y2="32" stroke="#ff6622" stroke-width="1" stroke-dasharray="4,2" opacity="0.8" />
+    <!-- Inner segments (showing 4 parts) -->
+    <rect x="22" y="14" width="8" height="16" fill="#3d2810" stroke="#ff9944" stroke-width="1" />
+    <rect x="34" y="14" width="8" height="16" fill="#3d2810" stroke="#ff9944" stroke-width="1" />
+    <rect x="22" y="34" width="8" height="16" fill="#3d2810" stroke="#ff9944" stroke-width="1" />
+    <rect x="34" y="34" width="8" height="16" fill="#3d2810" stroke="#ff9944" stroke-width="1" />
+    <!-- Core eyes in each segment -->
+    <circle cx="26" cy="22" r="3" fill="#ff9944" />
+    <circle cx="38" cy="22" r="3" fill="#ff9944" />
+    <circle cx="26" cy="42" r="3" fill="#ff9944" />
+    <circle cx="38" cy="42" r="3" fill="#ff9944" />
+    <!-- Central core -->
+    <circle cx="32" cy="32" r="4" fill="#ff6622" />
+</svg>

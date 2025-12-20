@@ -1,6 +1,5 @@
 import Phaser from "phaser";
 import { soundManager } from "../../audio/SoundManager";
-import { BOSSES } from "../../config/bosses";
 import { getEnemyDefinition } from "../../config/enemies";
 import { UPGRADE_CATALOG, UPGRADE_RARITY_ODDS } from "../../config/upgrades";
 import { WAVES } from "../../config/waves";
@@ -38,6 +37,7 @@ import type {
     PilotRuntime,
 } from "./MainScene.types";
 import { UpgradeManager } from "./managers/UpgradeManager";
+import { BossManager } from "./managers/BossManager";
 
 const OBJECT_SCALE = 0.7;
 const COLOR_ACCENT = 0x9ff0ff;
@@ -66,7 +66,6 @@ export class MainScene extends Phaser.Scene {
         critMultiplier: 2,
     };
     private difficulty = 1;
-    private bossMaxHealth = 0;
 
     private bullets!: Phaser.Physics.Arcade.Group;
     private enemyBullets!: Phaser.Physics.Arcade.Group;
@@ -80,10 +79,7 @@ export class MainScene extends Phaser.Scene {
         colorFx?: Phaser.FX.ColorMatrix;
     }[] = [];
     private backgroundFxTargets: Phaser.FX.ColorMatrix[] = [];
-    private backgroundFxTween?: Phaser.Tweens.Tween;
-    private bossIntroOverlay?: Phaser.GameObjects.Rectangle;
     private playfieldBackdrop?: Phaser.GameObjects.Rectangle;
-    private bossIntroColor = 0xf14e4e;
 
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
@@ -98,18 +94,11 @@ export class MainScene extends Phaser.Scene {
     private intermissionRemainingMs = 0;
     private pendingWaveIndex: number | null = null;
     private lastCountdownBroadcast = 0;
-    private bossPhase = 1;
-    private boss?: Phaser.Physics.Arcade.Image;
-    private bossNextPatternAt = 0;
     private screenBounds!: Phaser.Geom.Rectangle;
     private elapsedAccumulator = 0;
     private rng = new Prng(1);
     private seedId = "week-0";
-    private bossTemplate: BossDefinition = BOSSES[0];
     private affix: WeeklyAffix | null = null;
-    private bossPatternQueue: string[] = [];
-    private bossPatternCursor = 0;
-    private bossSpinAngle = 0;
     private runMode: RunMode = "standard";
     private twinControls?: TwinControlConfig;
     private infiniteMode = false;
@@ -129,6 +118,7 @@ export class MainScene extends Phaser.Scene {
     private playerState?: PilotRuntime;
     private playerTwoState?: PilotRuntime;
     private upgrades!: UpgradeManager;
+    private bossManager!: BossManager;
 
     // Scratch vectors to avoid per-frame allocations
     private readonly _scratchVec = new Phaser.Math.Vector2();
@@ -158,6 +148,30 @@ export class MainScene extends Phaser.Scene {
                 this.spawnBurstVisual(x, y, r, c, a),
             defaultShieldState: () => this.defaultShieldState(),
             defaultMomentumState: () => this.defaultMomentumState(),
+        });
+        this.bossManager = new BossManager({
+            getTime: () => this.time.now,
+            getDifficulty: () => this.difficulty,
+            getEnemyHealthScale: () => this.enemyHealthScale,
+            getEnemies: () => this.enemies,
+            getEnemyBullets: () => this.enemyBullets,
+            getNearestPilot: (x, y) => this.getNearestPilot(x, y),
+            spawnWaveEnemies: (spawns) => this.spawnWaveEnemies(spawns),
+            spawnBurstVisual: (x, y, r, c, a) =>
+                this.spawnBurstVisual(x, y, r, c, a),
+            getCamera: () => this.cameras.main,
+            addTween: (config) => this.tweens.add(config),
+            addCounter: (config) => this.tweens.addCounter(config),
+            addDelayedCall: (delay, callback) => {
+                this.time.delayedCall(delay, callback);
+            },
+            addRectangle: (x, y, w, h, color, alpha) =>
+                this.add.rectangle(x, y, w, h, color, alpha),
+            randFloat: (min, max) => this.randFloat(min, max),
+            randBetween: (min, max) => this.randBetween(min, max),
+            randChoice: <T>(items: T[]) => this.randChoice(items),
+            shuffle: <T>(items: T[]) => this.shuffle(items),
+            rngNext: () => this.rng.next(),
         });
         this.screenBounds = new Phaser.Geom.Rectangle(
             32,
@@ -201,13 +215,10 @@ export class MainScene extends Phaser.Scene {
         }
         this.seedId = seedId;
         this.rng = new Prng(seedValue);
-        const bossPool = BOSSES.length > 0 ? BOSSES : [this.bossTemplate];
-        this.bossTemplate =
-            bossOverride ?? bossPool[this.rng.nextInt(bossPool.length)];
+        this.bossManager.initialize(bossOverride, affix ?? null, (max) =>
+            this.rng.nextInt(max)
+        );
         this.affix = affix ?? null;
-        this.bossPatternQueue = this.shuffle(this.bossTemplate.patterns);
-        this.bossPatternCursor = 0;
-        this.bossSpinAngle = 0;
         this.runMode = options?.mode ?? "standard";
         this.twinControls = options?.twinControls;
         this.infiniteMode = this.runMode === "infinite";
@@ -401,7 +412,7 @@ export class MainScene extends Phaser.Scene {
         this.handleHeatseekingProjectiles(dt);
         this.handleProjectileBounds();
         this.handleXpAttraction(dt);
-        this.handleBossPatterns();
+        this.bossManager.handleBossPatterns();
         this.handleWaveIntermission(dt);
 
         if (
@@ -426,7 +437,8 @@ export class MainScene extends Phaser.Scene {
         this.createStarfieldTextures();
         this.createStarfieldLayers();
         this.createPlayfieldBackdrop();
-        this.setupBossIntroOverlay();
+        this.bossManager.setupBossIntroOverlay(this);
+        this.bossManager.setBackgroundFxTargets(this.backgroundFxTargets);
         // Sprite textures are now loaded from SVG files in BootScene
     }
 
@@ -564,128 +576,11 @@ export class MainScene extends Phaser.Scene {
         this.registerBackgroundFxTarget(this.playfieldBackdrop);
     }
 
-    private setupBossIntroOverlay() {
-        this.bossIntroOverlay?.destroy();
-        const overlay = this.add
-            .rectangle(
-                GAME_WIDTH / 2,
-                GAME_HEIGHT / 2,
-                GAME_WIDTH,
-                GAME_HEIGHT,
-                this.bossIntroColor,
-                0.28
-            )
-            .setDepth(5)
-            .setScrollFactor(0)
-            .setAlpha(0)
-            .setBlendMode(Phaser.BlendModes.MULTIPLY);
-        overlay.setVisible(false);
-        overlay.postFX.addVignette(0.5, 0.5, 0.9, 0.95);
-        this.bossIntroOverlay = overlay;
-    }
-
     private updateStarfield(dt: number) {
         this.starfieldLayers.forEach((layer) => {
             layer.sprite.tilePositionX += layer.velocityX * dt;
             layer.sprite.tilePositionY += layer.velocityY * dt;
         });
-    }
-
-    private applyBackgroundTone(saturationBoost: number, brightness: number) {
-        if (this.backgroundFxTargets.length === 0) return;
-        this.backgroundFxTargets.forEach((fx) => {
-            fx.reset();
-            fx.saturate(saturationBoost);
-            fx.brightness(brightness, true);
-        });
-    }
-
-    private pulseBackgroundForBossPhase(phase: number) {
-        if (this.backgroundFxTween) {
-            this.backgroundFxTween.stop();
-            this.backgroundFxTween = undefined;
-        }
-        if (this.backgroundFxTargets.length === 0) {
-            this.cameras.main.flash(220, 255, 94, 94);
-            return;
-        }
-        const targetSaturation = 0.9 + phase * 0.25;
-        const targetBrightness = 1.25 + phase * 0.1;
-        this.backgroundFxTween = this.tweens.addCounter({
-            from: 0,
-            to: 1,
-            duration: 320,
-            yoyo: true,
-            ease: "Quad.easeOut",
-            onUpdate: (tw) => {
-                const p = tw.getValue();
-                if (p === null) return;
-                const sat = Phaser.Math.Linear(0, targetSaturation, p);
-                const bright = Phaser.Math.Linear(1, targetBrightness, p);
-                this.applyBackgroundTone(sat, bright);
-            },
-            onComplete: () => {
-                this.applyBackgroundTone(0, 1);
-                this.backgroundFxTween = undefined;
-            },
-        });
-    }
-
-    private playBossIntroPulse() {
-        if (this.bossIntroOverlay) {
-            this.tweens.killTweensOf(this.bossIntroOverlay);
-            this.bossIntroOverlay.setVisible(true);
-            this.bossIntroOverlay.setAlpha(0);
-            this.bossIntroOverlay.setFillStyle(
-                this.bossIntroColor,
-                this.bossIntroOverlay.fillAlpha
-            );
-            this.tweens.add({
-                targets: this.bossIntroOverlay,
-                alpha: { from: 0, to: 0.82 },
-                duration: 180,
-                ease: "Quad.easeOut",
-                yoyo: true,
-                hold: 260,
-                onComplete: () => this.bossIntroOverlay?.setVisible(false),
-            });
-        } else {
-            const rgb = Phaser.Display.Color.IntegerToRGB(this.bossIntroColor);
-            this.cameras.main.flash(220, rgb.r, rgb.g, rgb.b);
-        }
-        this.pulseBackgroundForBossPhase(this.bossPhase || 1);
-    }
-
-    private getBossVisuals(id?: string): {
-        textureKey: string;
-        tint?: number;
-        overlayColor?: number;
-        scale?: number;
-    } {
-        switch (id) {
-            case "swarm-core":
-                return {
-                    textureKey: "boss-swarm-core",
-                    tint: 0x9df07f,
-                    overlayColor: 0x8fe876,
-                    scale: 2.1,
-                };
-            case "obelisk":
-                return {
-                    textureKey: "boss-obelisk",
-                    tint: 0xcab7ff,
-                    overlayColor: 0xa07bff,
-                    scale: 2.3,
-                };
-            case "sentinel":
-            default:
-                return {
-                    textureKey: "boss-sentinel",
-                    tint: 0xf14e4e,
-                    overlayColor: 0xf14e4e,
-                    scale: 2,
-                };
-        }
     }
 
     private defaultAbility(): AbilityState {
@@ -1135,16 +1030,7 @@ export class MainScene extends Phaser.Scene {
             if (!enemy) {
                 // Determine texture based on enemy kind
                 const kind = enemyData.kind;
-                const textureKey =
-                    kind === "drifter"
-                        ? "drifter"
-                        : kind === "watcher"
-                        ? "watcher"
-                        : kind === "mass"
-                        ? "mass"
-                        : kind === "boss"
-                        ? "boss"
-                        : "drifter"; // fallback
+                const textureKey = kind; // Use kind directly as texture key
 
                 // Spawn a new enemy for the guest
                 enemy = this.enemies.get(
@@ -1512,14 +1398,7 @@ export class MainScene extends Phaser.Scene {
             this.spawnPlayers();
         }
         this.inputMode = "keyboardMouse";
-        this.backgroundFxTween?.stop();
-        this.backgroundFxTween = undefined;
-        this.applyBackgroundTone(0, 1);
-        if (this.bossIntroOverlay) {
-            this.bossIntroOverlay.setAlpha(0);
-            this.bossIntroOverlay.setVisible(false);
-        }
-        this.bossIntroColor = 0xf14e4e;
+        this.bossManager.reset();
         this.baseDifficulty =
             typeof settings.difficultyMultiplier === "number"
                 ? settings.difficultyMultiplier
@@ -1565,11 +1444,8 @@ export class MainScene extends Phaser.Scene {
         this.pendingWaveIndex = null;
         this.intermissionRemainingMs = 0;
         this.lastCountdownBroadcast = 0;
-        this.bossPhase = 1;
-        this.bossNextPatternAt = 0;
         this.runActive = false;
         this.elapsedAccumulator = 0;
-        this.bossMaxHealth = 0;
 
         // Clean up visual effects before clearing pools
         this.cleanupVisualEffects();
@@ -2318,6 +2194,40 @@ export class MainScene extends Phaser.Scene {
                 // Reuse scratch vector 2 for pilot position
                 this._scratchVec2.set(pilot.sprite.x, pilot.sprite.y);
                 this.tryEnemyShot(enemy, this._scratchVec2, true);
+            } else if (kind === "phantom") {
+                // Phantom: teleports around, moves slowly between teleports
+                this.handlePhantomMovement(
+                    enemy,
+                    pilot,
+                    speed,
+                    slowFactor,
+                    isElite
+                );
+            } else if (kind === "orbiter") {
+                // Orbiter: circles around the player
+                this.handleOrbiterMovement(
+                    enemy,
+                    pilot,
+                    speed,
+                    slowFactor,
+                    isElite,
+                    eliteBehaviors
+                );
+            } else if (kind === "splitter") {
+                // Splitter: moves toward player, splits on death
+                if (isElite && eliteBehaviors.includes("burst_movement")) {
+                    this.handleBurstMovement(
+                        enemy,
+                        targetVec,
+                        speed,
+                        slowFactor
+                    );
+                } else {
+                    enemy.setVelocity(
+                        targetVec.x * speed * slowFactor,
+                        targetVec.y * speed * slowFactor
+                    );
+                }
             } else if (kind === "boss") {
                 this.updateBossMovement(enemy);
             }
@@ -2330,6 +2240,104 @@ export class MainScene extends Phaser.Scene {
                 eliteGlow.setPosition(enemy.x, enemy.y);
             }
         });
+    }
+
+    private handlePhantomMovement(
+        enemy: Phaser.Physics.Arcade.Image,
+        pilot: PilotRuntime,
+        speed: number,
+        slowFactor: number,
+        _isElite: boolean
+    ) {
+        const nextTeleport = enemy.getData("nextTeleport") as number;
+        const teleportCooldown = enemy.getData("teleportCooldown") as number;
+
+        if (this.time.now >= nextTeleport) {
+            // Teleport to a new position near the player
+            const angle = this.randFloat(0, Math.PI * 2);
+            const distance = this.randBetween(100, 200);
+            let newX = pilot.sprite.x + Math.cos(angle) * distance;
+            let newY = pilot.sprite.y + Math.sin(angle) * distance;
+
+            // Clamp to screen bounds
+            newX = Phaser.Math.Clamp(
+                newX,
+                this.screenBounds.left + 40,
+                this.screenBounds.right - 40
+            );
+            newY = Phaser.Math.Clamp(
+                newY,
+                this.screenBounds.top + 40,
+                this.screenBounds.bottom - 40
+            );
+
+            // Visual effect for teleport
+            this.spawnBurstVisual(enemy.x, enemy.y, 30, 0x9b6dff, 0.6);
+            enemy.setPosition(newX, newY);
+            this.spawnBurstVisual(newX, newY, 30, 0x9b6dff, 0.6);
+
+            // Set next teleport time
+            const cooldownVariance = this.randBetween(-300, 300);
+            enemy.setData(
+                "nextTeleport",
+                this.time.now + teleportCooldown + cooldownVariance
+            );
+
+            // Brief pause after teleport
+            enemy.setVelocity(0, 0);
+        } else {
+            // Slow drift toward player between teleports
+            const targetVec = this._scratchVec
+                .set(pilot.sprite.x - enemy.x, pilot.sprite.y - enemy.y)
+                .normalize();
+            const driftSpeed = speed * 0.4 * slowFactor;
+            enemy.setVelocity(
+                targetVec.x * driftSpeed,
+                targetVec.y * driftSpeed
+            );
+        }
+    }
+
+    private handleOrbiterMovement(
+        enemy: Phaser.Physics.Arcade.Image,
+        pilot: PilotRuntime,
+        speed: number,
+        slowFactor: number,
+        isElite: boolean,
+        eliteBehaviors: string[]
+    ) {
+        let orbitAngle = enemy.getData("orbitAngle") as number;
+        const orbitRadius = enemy.getData("orbitRadius") as number;
+        const orbitDirection = enemy.getData("orbitDirection") as number;
+
+        // Update orbit angle based on speed
+        const angularSpeed = speed * 0.008 * slowFactor;
+        orbitAngle += angularSpeed * orbitDirection;
+        enemy.setData("orbitAngle", orbitAngle);
+
+        // Calculate target position on orbit
+        const targetX = pilot.sprite.x + Math.cos(orbitAngle) * orbitRadius;
+        const targetY = pilot.sprite.y + Math.sin(orbitAngle) * orbitRadius;
+
+        // Move toward orbit position
+        const dx = targetX - enemy.x;
+        const dy = targetY - enemy.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > 5) {
+            const moveSpeed = Math.min(speed * slowFactor, dist * 3);
+            enemy.setVelocity((dx / dist) * moveSpeed, (dy / dist) * moveSpeed);
+        } else {
+            enemy.setVelocity(0, 0);
+        }
+
+        // Orbiters can shoot while circling
+        this._scratchVec2.set(pilot.sprite.x, pilot.sprite.y);
+        if (isElite && eliteBehaviors.includes("rapid_fire")) {
+            this.tryEliteRapidFire(enemy, this._scratchVec2);
+        } else {
+            this.tryEnemyShot(enemy, this._scratchVec2);
+        }
     }
 
     private handleBurstMovement(
@@ -2591,426 +2599,6 @@ export class MainScene extends Phaser.Scene {
         });
     }
 
-    private handleBossPatterns() {
-        if (!this.boss || !this.boss.active) return;
-        if (this.time.now < this.bossNextPatternAt) return;
-        this.fireBossPattern();
-    }
-
-    private fireBossPattern() {
-        if (!this.boss) return;
-        // Phase intensity could be used for future pattern variations
-        const pattern = this.nextBossPattern();
-        switch (pattern) {
-            case "beam-spin":
-                this.bossPatternBeamSpin();
-                break;
-            case "aimed-burst":
-                this.bossPatternAimedBurst();
-                break;
-            case "ring-with-gap":
-                this.bossPatternRingWithGap();
-                break;
-            case "summon-minions":
-                this.bossPatternSummonMinions();
-                break;
-            case "cone-volley":
-                this.bossPatternConeVolley();
-                break;
-            case "pulse-ring":
-                this.bossPatternPulseRing();
-                break;
-            case "slam":
-                this.bossPatternSlam();
-                break;
-            case "ricochet-shards":
-                this.bossPatternShardSpray();
-                break;
-            case "lane-beams":
-                this.bossPatternLaneBeams();
-                break;
-            default:
-                this.bossPatternRingWithGap();
-                break;
-        }
-    }
-
-    private nextBossPattern() {
-        if (this.bossPatternQueue.length === 0) {
-            this.bossPatternQueue = this.shuffle(this.bossTemplate.patterns);
-            this.bossPatternCursor = 0;
-            if (this.bossPatternQueue.length === 0) {
-                return "ring-with-gap";
-            }
-        }
-        const pattern =
-            this.bossPatternQueue[
-                this.bossPatternCursor % this.bossPatternQueue.length
-            ];
-        this.bossPatternCursor++;
-        return pattern;
-    }
-
-    private bossPatternRingWithGap() {
-        if (!this.boss) return;
-        const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-        const baseBullets = 22;
-        const total = this.getBossBulletDensity(baseBullets);
-        const gapStart = this.randFloat(0, Math.PI * 2);
-        const baseGapWidth = Math.PI / 9;
-        // Reduce gap width in later phases for increased difficulty
-        const gapWidth =
-            baseGapWidth * Math.max(0.5, 1.0 - (this.bossPhase - 1) * 0.25);
-
-        for (let i = 0; i < total; i++) {
-            const angle = (Math.PI * 2 * i) / total;
-            const diff = Math.abs(
-                ((angle - gapStart + Math.PI * 2) % (Math.PI * 2)) - Math.PI
-            );
-            if (diff < gapWidth) continue;
-            const dir = new Phaser.Math.Vector2(
-                Math.cos(angle),
-                Math.sin(angle)
-            );
-            this.spawnEnemyBullet(
-                center.x,
-                center.y,
-                dir,
-                this.getBossProjectileSpeed(280)
-            );
-        }
-        this.bossNextPatternAt =
-            this.time.now + this.getBossPatternCooldown(1100);
-        this.tryBossPatternOverlap();
-    }
-
-    private bossPatternAimedBurst() {
-        if (!this.boss) return;
-        const targetPilot = this.getNearestPilot(this.boss.x, this.boss.y);
-        if (!targetPilot) return;
-        const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-        const target = new Phaser.Math.Vector2(
-            targetPilot.sprite.x,
-            targetPilot.sprite.y
-        )
-            .subtract(center)
-            .normalize();
-
-        // Increase burst size and reduce spread in later phases
-        const baseSpread = Phaser.Math.DegToRad(8);
-        const spread =
-            baseSpread * Math.max(0.6, 1.0 - (this.bossPhase - 1) * 0.2);
-        const baseBullets = 7; // -3 to +3
-        const bulletCount = this.getBossBulletDensity(baseBullets);
-        const halfCount = Math.floor(bulletCount / 2);
-
-        for (let i = -halfCount; i <= halfCount; i++) {
-            const dir = target.clone().rotate(spread * i);
-            this.spawnEnemyBullet(
-                center.x,
-                center.y,
-                dir,
-                this.getBossProjectileSpeed(300)
-            );
-        }
-        this.bossNextPatternAt =
-            this.time.now + this.getBossPatternCooldown(950);
-        this.tryBossPatternOverlap();
-    }
-
-    private bossPatternBeamSpin() {
-        if (!this.boss) return;
-        const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-        // Faster spin rate in later phases
-        const baseSpinRate = Phaser.Math.DegToRad(22);
-        const spinRate = baseSpinRate * (1.0 + (this.bossPhase - 1) * 0.5);
-        this.bossSpinAngle += spinRate;
-
-        const baseBeams = 14;
-        const total = this.getBossBulletDensity(baseBeams);
-        for (let i = 0; i < total; i++) {
-            const angle = this.bossSpinAngle + (Math.PI * 2 * i) / total;
-            const dir = new Phaser.Math.Vector2(
-                Math.cos(angle),
-                Math.sin(angle)
-            );
-            this.spawnEnemyBullet(
-                center.x,
-                center.y,
-                dir,
-                this.getBossProjectileSpeed(250)
-            );
-        }
-        this.bossNextPatternAt =
-            this.time.now + this.getBossPatternCooldown(780);
-        this.tryBossPatternOverlap();
-    }
-
-    private bossPatternSummonMinions() {
-        // Increase minion count and elite chance in later phases
-        const phaseMultiplier = 1.0 + (this.bossPhase - 1) * 0.3;
-        const eliteChance = Math.min(0.7, 0.35 + (this.bossPhase - 1) * 0.175);
-
-        const choices: EnemySpawn[] = [
-            {
-                kind: "drifter",
-                count: Math.floor(this.randBetween(3, 4) * phaseMultiplier),
-            },
-            {
-                kind: "watcher",
-                count: Math.floor(this.randBetween(1, 2) * phaseMultiplier),
-            },
-            {
-                kind: "mass",
-                count: Math.max(1, Math.floor(1 * phaseMultiplier)),
-                elite: this.rng.next() < eliteChance,
-            },
-        ];
-        const pick = this.randChoice(choices);
-        this.spawnWaveEnemies([pick]);
-        this.bossNextPatternAt =
-            this.time.now + this.getBossPatternCooldown(1400);
-        this.tryBossPatternOverlap();
-    }
-
-    private bossPatternConeVolley() {
-        if (!this.boss) return;
-        const targetPilot = this.getNearestPilot(this.boss.x, this.boss.y);
-        if (!targetPilot) return;
-        const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-        const target = new Phaser.Math.Vector2(
-            targetPilot.sprite.x,
-            targetPilot.sprite.y
-        )
-            .subtract(center)
-            .normalize();
-
-        // Tighter cone with more bullets in later phases
-        const baseSpread = Phaser.Math.DegToRad(6);
-        const spread =
-            baseSpread * Math.max(0.7, 1.0 - (this.bossPhase - 1) * 0.15);
-        const baseBullets = 9; // -4 to +4
-        const bulletCount = this.getBossBulletDensity(baseBullets);
-        const halfCount = Math.floor(bulletCount / 2);
-
-        for (let i = -halfCount; i <= halfCount; i++) {
-            const dir = target.clone().rotate(spread * i);
-            this.spawnEnemyBullet(
-                center.x,
-                center.y,
-                dir,
-                this.getBossProjectileSpeed(300)
-            );
-        }
-        this.bossNextPatternAt =
-            this.time.now + this.getBossPatternCooldown(1100);
-        this.tryBossPatternOverlap();
-    }
-
-    private bossPatternPulseRing() {
-        if (!this.boss) return;
-        const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-
-        // More rings and faster timing in later phases
-        const baseRings = 16;
-        const ringBullets = this.getBossBulletDensity(baseRings);
-        const ringCount = Math.min(4, 2 + (this.bossPhase - 1)); // 2, 3, 4 rings
-        const baseDelay = 200;
-        const delay =
-            baseDelay * Math.max(0.5, 1.0 - (this.bossPhase - 1) * 0.25);
-
-        const fireRing = (offset: number, speed: number) => {
-            for (let i = 0; i < ringBullets; i++) {
-                const angle = offset + (Math.PI * 2 * i) / ringBullets;
-                const dir = new Phaser.Math.Vector2(
-                    Math.cos(angle),
-                    Math.sin(angle)
-                );
-                this.spawnEnemyBullet(
-                    center.x,
-                    center.y,
-                    dir,
-                    this.getBossProjectileSpeed(speed)
-                );
-            }
-        };
-
-        // Fire multiple rings with increasing speed
-        for (let ring = 0; ring < ringCount; ring++) {
-            const ringDelay = ring * delay;
-            const ringSpeed = 240 + ring * 40; // Increasing speed per ring
-            this.time.delayedCall(ringDelay, () =>
-                fireRing(this.randFloat(0, Math.PI * 2), ringSpeed)
-            );
-        }
-
-        this.bossNextPatternAt =
-            this.time.now + this.getBossPatternCooldown(1200);
-        this.tryBossPatternOverlap();
-    }
-
-    private bossPatternSlam() {
-        if (!this.boss) return;
-        const targetPilot = this.getNearestPilot(this.boss.x, this.boss.y);
-        if (!targetPilot) return;
-        const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-        const toward = new Phaser.Math.Vector2(
-            targetPilot.sprite.x,
-            targetPilot.sprite.y
-        )
-            .subtract(center)
-            .normalize();
-
-        // More projectiles and tighter spread in later phases
-        const baseBullets = 3;
-        const bulletCount = this.getBossBulletDensity(baseBullets);
-        const baseSpread = 0.12;
-        const spread =
-            baseSpread * Math.max(0.8, 1.0 - (this.bossPhase - 1) * 0.1);
-
-        // Fire center bullet
-        this.spawnEnemyBullet(
-            center.x,
-            center.y,
-            toward,
-            this.getBossProjectileSpeed(360)
-        );
-
-        // Fire side bullets
-        for (let i = 1; i < bulletCount; i++) {
-            const angle = (i % 2 === 0 ? 1 : -1) * spread * Math.ceil(i / 2);
-            this.spawnEnemyBullet(
-                center.x,
-                center.y,
-                toward.clone().rotate(angle),
-                this.getBossProjectileSpeed(320)
-            );
-        }
-
-        this.bossNextPatternAt =
-            this.time.now + this.getBossPatternCooldown(1100);
-        this.tryBossPatternOverlap();
-    }
-
-    private bossPatternShardSpray() {
-        if (!this.boss) return;
-        const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-        const baseShards = 16;
-        const shardCount = this.getBossBulletDensity(baseShards);
-
-        // Increased randomness and speed in later phases
-        const baseRandomness = 0.05;
-        const randomness = baseRandomness * (1.0 + (this.bossPhase - 1) * 0.5);
-
-        for (let i = 0; i < shardCount; i++) {
-            const angle =
-                (Math.PI * 2 * i) / shardCount +
-                this.randFloat(-randomness, randomness);
-            const dir = new Phaser.Math.Vector2(
-                Math.cos(angle),
-                Math.sin(angle)
-            );
-            this.spawnEnemyBullet(
-                center.x,
-                center.y,
-                dir,
-                this.getBossProjectileSpeed(300)
-            );
-        }
-        this.bossNextPatternAt =
-            this.time.now + this.getBossPatternCooldown(900);
-        this.tryBossPatternOverlap();
-    }
-
-    private bossPatternLaneBeams() {
-        if (!this.boss) return;
-        const center = new Phaser.Math.Vector2(this.boss.x, this.boss.y);
-        const dirs = [
-            new Phaser.Math.Vector2(1, 0),
-            new Phaser.Math.Vector2(-1, 0),
-            new Phaser.Math.Vector2(0, 1),
-            new Phaser.Math.Vector2(0, -1),
-        ];
-        const diagonals = [
-            new Phaser.Math.Vector2(1, 1).normalize(),
-            new Phaser.Math.Vector2(-1, 1).normalize(),
-            new Phaser.Math.Vector2(1, -1).normalize(),
-            new Phaser.Math.Vector2(-1, -1).normalize(),
-        ];
-
-        // Fire multiple waves of beams in later phases
-        const waveCount = Math.min(3, 1 + (this.bossPhase - 1)); // 1, 2, 3 waves
-        const waveDelay = 150 * Math.max(0.6, 1.0 - (this.bossPhase - 1) * 0.2);
-
-        for (let wave = 0; wave < waveCount; wave++) {
-            this.time.delayedCall(wave * waveDelay, () => {
-                [...dirs, ...diagonals].forEach((dir) => {
-                    this.spawnEnemyBullet(
-                        center.x,
-                        center.y,
-                        dir,
-                        this.getBossProjectileSpeed(240)
-                    );
-                });
-            });
-        }
-
-        this.bossNextPatternAt =
-            this.time.now + this.getBossPatternCooldown(850);
-        this.tryBossPatternOverlap();
-    }
-
-    // Enhanced boss battle methods for Requirements 2.1, 2.2, 2.3, 2.4, 2.5
-
-    private getBossPatternCooldown(baseCooldown: number): number {
-        // Faster transitions and more aggressive patterns (Requirements 2.2, 2.4)
-        const phaseSpeedMultiplier = Math.max(
-            0.4,
-            1.0 - (this.bossPhase - 1) * 0.3
-        ); // 1.0x, 0.7x, 0.4x
-        const difficultyMultiplier = 1.0 / this.difficulty;
-        return baseCooldown * phaseSpeedMultiplier * difficultyMultiplier;
-    }
-
-    private getBossProjectileSpeed(baseSpeed: number): number {
-        // Faster projectile speeds in later phases (Requirement 2.4)
-        const phaseSpeedBonus = 1.0 + (this.bossPhase - 1) * 0.25; // 1.0x, 1.25x, 1.5x
-        return baseSpeed * this.difficulty * phaseSpeedBonus;
-    }
-
-    private getBossBulletDensity(baseDensity: number): number {
-        // Increased bullet density in later phases (Requirement 2.2)
-        const phaseMultiplier = 1.0 + (this.bossPhase - 1) * 0.3; // 1.0x, 1.3x, 1.6x
-        return Math.floor(baseDensity * phaseMultiplier);
-    }
-
-    private shouldTriggerOverlappingPattern(): boolean {
-        // More aggressive pattern overlapping in later phases (Requirement 2.3)
-        const overlapChance = Math.min(0.4, (this.bossPhase - 1) * 0.2); // 0%, 20%, 40%
-        return this.rng.next() < overlapChance;
-    }
-
-    private tryBossPatternOverlap() {
-        // Implement pattern overlapping for enhanced difficulty (Requirement 2.3)
-        if (!this.shouldTriggerOverlappingPattern()) return;
-
-        // Fire a secondary pattern with reduced intensity
-        const secondaryPatterns = ["ring-with-gap", "aimed-burst"];
-        const pattern = this.randChoice(secondaryPatterns);
-
-        // Delay the secondary pattern slightly
-        this.time.delayedCall(200, () => {
-            switch (pattern) {
-                case "ring-with-gap":
-                    this.bossPatternRingWithGap();
-                    break;
-                case "aimed-burst":
-                    this.bossPatternAimedBurst();
-                    break;
-            }
-        });
-    }
-
     private tryEnemyShot(
         enemy: Phaser.Physics.Arcade.Image,
         target: Phaser.Math.Vector2,
@@ -3144,7 +2732,7 @@ export class MainScene extends Phaser.Scene {
         if (remaining <= 0) {
             this.handleEnemyDeath(enemy, tags);
         } else if ((enemy.getData("kind") as string) === "boss") {
-            this.handleBossPhaseChange();
+            this.bossManager.handleBossPhaseChange();
         }
 
         // edge extension removed with simplified charge; no-op
@@ -3436,6 +3024,15 @@ export class MainScene extends Phaser.Scene {
         if (isElite && eliteBehaviors.includes("death_explosion")) {
             this.handleDeathExplosion(enemy);
         }
+
+        // Handle splitter death - spawn mini splitters
+        if (kind === "splitter") {
+            const splitCount = enemy.getData("splitCount") as number;
+            if (splitCount > 0) {
+                this.handleSplitterDeath(x, y, splitCount, isElite);
+            }
+        }
+
         const fromVolatile = killerTags?.includes("volatile");
         if (!fromVolatile) {
             this.triggerChainReaction(x, y, kind, maxHealth, enemy);
@@ -3459,9 +3056,7 @@ export class MainScene extends Phaser.Scene {
         this.tryKineticHeal();
         if (kind === "boss") {
             this.bossCleared = true;
-            this.boss = undefined;
-            this.bossMaxHealth = 0;
-            this.bossPhase = 1;
+            this.bossManager.reset();
 
             // Trigger card reward for defeating boss
             useMetaStore.getState().actions.triggerCardReward();
@@ -3470,6 +3065,80 @@ export class MainScene extends Phaser.Scene {
                 this.endRun(true);
             }
         }
+    }
+
+    private handleSplitterDeath(
+        x: number,
+        y: number,
+        splitCount: number,
+        isElite: boolean
+    ) {
+        // Visual effect for split
+        this.spawnBurstVisual(x, y, 40, 0xff9944, 0.7);
+
+        // Spawn mini splitters in a spread pattern
+        const angleStep = (Math.PI * 2) / splitCount;
+        for (let i = 0; i < splitCount; i++) {
+            const angle = angleStep * i + this.randFloat(-0.3, 0.3);
+            const distance = 30;
+            const spawnX = x + Math.cos(angle) * distance;
+            const spawnY = y + Math.sin(angle) * distance;
+
+            // Spawn a smaller splitter that won't split further
+            this.spawnMiniSplitter(spawnX, spawnY, isElite);
+        }
+    }
+
+    private spawnMiniSplitter(x: number, y: number, elite: boolean) {
+        const textureKey = elite ? "elite-splitter" : "splitter";
+        const enemy = this.enemies.get(
+            0,
+            0,
+            textureKey
+        ) as Phaser.Physics.Arcade.Image;
+        if (!enemy) return;
+
+        const miniScale = OBJECT_SCALE * 0.6;
+        enemy.setActive(true);
+        enemy.setVisible(true);
+        enemy.setScale(miniScale);
+        enemy.setPosition(x, y);
+
+        // Mini splitters have reduced stats
+        const stats = getEnemyDefinition("splitter", elite);
+        const enemyHealthMult = this.affix?.enemyHealthMultiplier ?? 1;
+        const enemySpeedMult = this.affix?.enemySpeedMultiplier ?? 1;
+        const enemyDamageMult = this.affix?.enemyDamageMultiplier ?? 1;
+
+        const maxHealth =
+            stats.health * 0.4 * enemyHealthMult * this.enemyHealthScale;
+        enemy.setData("kind", "splitter");
+        enemy.setData("health", maxHealth);
+        enemy.setData("maxHealth", maxHealth);
+        enemy.setData(
+            "speed",
+            stats.speed * 1.3 * this.difficulty * enemySpeedMult
+        ); // Faster
+        enemy.setData("damage", stats.damage * 0.5 * enemyDamageMult);
+        enemy.setData("elite", elite);
+        enemy.setData("eliteBehaviors", []);
+        enemy.setData("splitCount", 0); // Mini splitters don't split
+
+        const enemyBody = enemy.body as Phaser.Physics.Arcade.Body;
+        enemyBody.setSize(enemy.displayWidth, enemy.displayHeight, true);
+        enemyBody.setBounce(0.4, 0.4);
+        enemyBody.enable = true;
+
+        if (elite) {
+            enemy.setTint(0xff6b47);
+        } else {
+            enemy.clearTint();
+        }
+
+        // Give initial velocity away from spawn point
+        const angle = this.randFloat(0, Math.PI * 2);
+        const speed = 150;
+        enemy.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     }
 
     private dropXp(x: number, y: number, kind: string) {
@@ -3482,10 +3151,16 @@ export class MainScene extends Phaser.Scene {
         pickup.setActive(true);
         pickup.setVisible(true);
         pickup.setScale(OBJECT_SCALE);
-        pickup.setData(
-            "value",
-            kind === "mass" ? 6 : kind === "watcher" ? 4 : 3
-        );
+        // XP values: mass=6, watcher/orbiter=4, splitter=5, phantom=4, drifter=3
+        const xpValues: Record<string, number> = {
+            mass: 6,
+            watcher: 4,
+            orbiter: 4,
+            splitter: 5,
+            phantom: 4,
+            drifter: 3,
+        };
+        pickup.setData("value", xpValues[kind] ?? 3);
         pickup.setVelocity(
             this.randBetween(-40, 40),
             this.randBetween(-40, 40)
@@ -3908,7 +3583,7 @@ export class MainScene extends Phaser.Scene {
         });
         randomized.forEach((spawn) => {
             if (spawn.kind === "boss") {
-                this.spawnBoss();
+                this.bossManager.spawnBoss();
                 return;
             }
             for (let i = 0; i < spawn.count; i++) {
@@ -3917,7 +3592,7 @@ export class MainScene extends Phaser.Scene {
         });
     }
 
-    private spawnEnemy(kind: string, elite?: boolean) {
+    private spawnEnemy(kind: string, elite?: boolean, scale?: number) {
         // Use elite textures for enhanced visual distinction (Requirements 6.1, 6.5)
         let textureKey: string;
         if (elite) {
@@ -3926,14 +3601,17 @@ export class MainScene extends Phaser.Scene {
                     ? "elite-drifter"
                     : kind === "watcher"
                     ? "elite-watcher"
-                    : "elite-mass";
+                    : kind === "mass"
+                    ? "elite-mass"
+                    : kind === "phantom"
+                    ? "elite-phantom"
+                    : kind === "orbiter"
+                    ? "elite-orbiter"
+                    : kind === "splitter"
+                    ? "elite-splitter"
+                    : kind;
         } else {
-            textureKey =
-                kind === "drifter"
-                    ? "drifter"
-                    : kind === "watcher"
-                    ? "watcher"
-                    : "mass";
+            textureKey = kind;
         }
 
         const enemy = this.enemies.get(
@@ -3944,7 +3622,8 @@ export class MainScene extends Phaser.Scene {
         if (!enemy) return;
         enemy.setActive(true);
         enemy.setVisible(false);
-        enemy.setScale(OBJECT_SCALE);
+        const baseScale = scale ?? OBJECT_SCALE;
+        enemy.setScale(baseScale);
         const spawnPos = this.pickPerimeterSpawn();
         enemy.setPosition(spawnPos.x, spawnPos.y);
         const stats = getEnemyDefinition(kind as any, elite);
@@ -3973,6 +3652,21 @@ export class MainScene extends Phaser.Scene {
         enemy.setData("damage", stats.damage * enemyDamageMult);
         enemy.setData("elite", elite || false);
         enemy.setData("eliteBehaviors", stats.eliteBehaviors || []);
+
+        // Initialize special enemy data
+        if (kind === "phantom") {
+            enemy.setData(
+                "nextTeleport",
+                this.time.now + this.randBetween(1500, 3000)
+            );
+            enemy.setData("teleportCooldown", elite ? 1200 : 2000);
+        } else if (kind === "orbiter") {
+            enemy.setData("orbitAngle", this.randFloat(0, Math.PI * 2));
+            enemy.setData("orbitRadius", this.randBetween(120, 200));
+            enemy.setData("orbitDirection", this.rng.next() > 0.5 ? 1 : -1);
+        } else if (kind === "splitter") {
+            enemy.setData("splitCount", scale ? 0 : 2); // Mini splitters don't split further
+        }
 
         // Enhanced visual threat indicators for high-stat enemies (Requirements 6.3, 6.5)
         const healthRatio =
@@ -4033,67 +3727,6 @@ export class MainScene extends Phaser.Scene {
             enemy.clearTint();
         }
         this.showSpawnCue(enemy);
-    }
-
-    private spawnBoss() {
-        const visuals = this.getBossVisuals(this.bossTemplate?.id);
-        const textureKey = visuals.textureKey;
-        this.boss = this.enemies.get(
-            GAME_WIDTH / 2,
-            140,
-            textureKey
-        ) as Phaser.Physics.Arcade.Image;
-        if (!this.boss) return;
-        this.boss.setActive(true);
-        this.boss.setVisible(true);
-        this.boss.setScale(OBJECT_SCALE * 2);
-        if (visuals.scale) {
-            this.boss.setScale(OBJECT_SCALE * visuals.scale);
-        }
-        this.boss.setData("kind", "boss");
-        const base = getEnemyDefinition("boss");
-        const tuning = this.bossTemplate?.tuning ?? {};
-        const affixBossHealthMult = this.affix?.bossHealthMultiplier ?? 1;
-        const affixBossProjSpeedMult =
-            this.affix?.bossProjectileSpeedMultiplier ?? 1;
-        const health =
-            base.health *
-            (tuning.healthMultiplier ?? 1) *
-            affixBossHealthMult *
-            this.enemyHealthScale;
-        const speed = base.speed * (tuning.speedMultiplier ?? 1);
-        const fireCooldownBase = base.fireCooldown ?? 1.2;
-        const fireRateMultiplier = tuning.fireRateMultiplier ?? 1;
-        const projSpeedBase = base.projectileSpeed ?? 0;
-        const projectileSpeedMultiplier =
-            (tuning.projectileSpeedMultiplier ?? 1) * affixBossProjSpeedMult;
-
-        this.bossMaxHealth = health;
-        this.boss.setData("health", health);
-        this.boss.setData("maxHealth", health);
-        this.boss.setData("bossId", this.bossTemplate?.id ?? "boss");
-        this.boss.setData("speed", speed * this.difficulty);
-        this.boss.setData(
-            "fireCooldown",
-            fireCooldownBase / (fireRateMultiplier * this.difficulty)
-        );
-        this.boss.setData(
-            "projectileSpeed",
-            projSpeedBase * projectileSpeedMultiplier * this.difficulty
-        );
-        this.bossNextPatternAt = this.time.now + 1500 / this.difficulty;
-        const bossBody = this.boss.body as Phaser.Physics.Arcade.Body;
-        bossBody.setSize(this.boss.displayWidth, this.boss.displayHeight, true);
-        bossBody.setImmovable(false);
-        bossBody.setCollideWorldBounds(true);
-        bossBody.setDrag(60, 60);
-        if (visuals.tint) {
-            this.boss.setTint(visuals.tint);
-        } else {
-            this.boss.clearTint();
-        }
-        this.bossIntroColor = visuals.overlayColor ?? 0xf14e4e;
-        this.playBossIntroPulse();
     }
 
     private handlePlayerDamage(
@@ -4489,111 +4122,6 @@ export class MainScene extends Phaser.Scene {
         });
     }
 
-    private handleBossPhaseChange() {
-        if (!this.boss) return;
-        const hp = this.boss.getData("health") as number;
-        const maxHp = this.bossMaxHealth || getEnemyDefinition("boss").health;
-        const hpPct = hp / maxHp;
-        let phase = 1;
-        if (hpPct < 0.66) phase = 2;
-        if (hpPct < 0.33) phase = 3;
-        if (phase !== this.bossPhase) {
-            const previousPhase = this.bossPhase;
-            this.bossPhase = phase;
-
-            // Enhanced visual and audio feedback (Requirements 2.5, 6.2, 6.4)
-            this.triggerBossPhaseTransition(previousPhase, phase);
-            this.pulseBackgroundForBossPhase(phase);
-            gameEvents.emit(GAME_EVENT_KEYS.bossPhaseChanged, { phase });
-
-            // Immediate pattern reset for faster transitions (Requirement 2.5)
-            this.bossNextPatternAt = this.time.now + 300; // Quick transition
-        }
-    }
-
-    private triggerBossPhaseTransition(_fromPhase: number, toPhase: number) {
-        // Enhanced visual and audio feedback for phase changes (Requirements 6.2, 6.4)
-        if (!this.boss) return;
-
-        // Screen shake intensity increases with phase
-        const shakeIntensity = 0.01 + (toPhase - 1) * 0.005;
-        const shakeDuration = 400 + (toPhase - 1) * 200;
-        this.cameras.main.shake(shakeDuration, shakeIntensity);
-
-        // Enhanced screen effects for dangerous boss phases (Requirements 6.4)
-        const phaseColors = [
-            [255, 100, 100], // Phase 1: Red
-            [255, 150, 50], // Phase 2: Orange
-            [255, 50, 50], // Phase 3: Intense Red
-        ];
-        const [r, g, b] = phaseColors[toPhase - 1];
-
-        // Longer, more intense flash for higher phases
-        const flashDuration = 400 + (toPhase - 1) * 200;
-        this.cameras.main.flash(flashDuration, r, g, b);
-
-        // Add screen distortion effects for phases 2 and 3
-        if (toPhase >= 2) {
-            // Create temporary screen overlay for dangerous phases
-            const dangerOverlay = this.add
-                .rectangle(
-                    GAME_WIDTH / 2,
-                    GAME_HEIGHT / 2,
-                    GAME_WIDTH,
-                    GAME_HEIGHT,
-                    toPhase === 3 ? 0xff2020 : 0xff6020,
-                    0.15
-                )
-                .setDepth(10)
-                .setBlendMode(Phaser.BlendModes.MULTIPLY);
-
-            // Pulsing danger overlay
-            this.tweens.add({
-                targets: dangerOverlay,
-                alpha: { from: 0.15, to: 0.05 },
-                duration: 800,
-                yoyo: true,
-                repeat: 3,
-                onComplete: () => dangerOverlay.destroy(),
-            });
-        }
-
-        // Boss visual enhancement
-        if (this.boss) {
-            // Increase boss tint intensity with phase
-            const tintIntensity = 0xffffff - (toPhase - 1) * 0x202020;
-            this.boss.setTint(tintIntensity);
-
-            // Scale pulse effect
-            const originalScale = this.boss.scaleX;
-            this.tweens.add({
-                targets: this.boss,
-                scaleX: originalScale * 1.2,
-                scaleY: originalScale * 1.2,
-                duration: 200,
-                yoyo: true,
-                ease: "Power2",
-            });
-        }
-
-        // Audio feedback for boss phase change (Requirements 6.2, 6.4)
-        soundManager.playSfx("bossPhaseChange");
-
-        // Spawn dramatic visual burst
-        if (this.boss) {
-            const burstRadius = 60 + (toPhase - 1) * 20;
-            const burstColor =
-                toPhase === 3 ? 0xff3030 : toPhase === 2 ? 0xff9632 : 0xff6464;
-            this.spawnBurstVisual(
-                this.boss.x,
-                this.boss.y,
-                burstRadius,
-                burstColor,
-                1.0
-            );
-        }
-    }
-
     private endRun(victory: boolean) {
         this.runActive = false;
         this.intermissionActive = false;
@@ -4680,7 +4208,7 @@ export class MainScene extends Phaser.Scene {
             enemiesDestroyed: state.enemiesDestroyed,
             upgrades: state.currentUpgrades,
             seedId: state.seedId ?? this.seedId,
-            bossId: this.bossTemplate?.id,
+            bossId: this.bossManager.template?.id,
             affixId: this.affix?.id,
             synergies: state.achievedSynergies,
             mode: this.runMode,

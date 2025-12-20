@@ -67,7 +67,14 @@ export interface Settings {
     inputMode: InputMode;
 }
 
-export type EnemyKind = "drifter" | "watcher" | "mass" | "boss";
+export type EnemyKind =
+    | "drifter"
+    | "watcher"
+    | "mass"
+    | "phantom"
+    | "orbiter"
+    | "splitter"
+    | "boss";
 
 export type EliteBehavior =
     | "burst_movement"

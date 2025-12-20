@@ -23,6 +23,26 @@ const base: Record<EnemyKind, EnemyDefinition> = {
         fireCooldown: 2.8, // Increased from 2.6 (slower firing)
         projectileSpeed: 110, // Reduced from 120 (-8%)
     },
+    phantom: {
+        kind: "phantom",
+        speed: 80, // Moderate base speed
+        health: 18, // Fragile but evasive
+        damage: 15,
+    },
+    orbiter: {
+        kind: "orbiter",
+        speed: 120, // Fast orbital speed
+        health: 28,
+        damage: 10,
+        fireCooldown: 2.2,
+        projectileSpeed: 130,
+    },
+    splitter: {
+        kind: "splitter",
+        speed: 55,
+        health: 50, // Moderate health, splits on death
+        damage: 18,
+    },
     boss: {
         kind: "boss",
         speed: 55, // Reduced from 60 (-8%)
@@ -47,6 +67,9 @@ const eliteBehaviors: Record<
     drifter: ["burst_movement"], // Drifters get burst movement for unpredictable positioning
     watcher: ["rapid_fire"], // Watchers get rapid fire for increased threat at range
     mass: ["burst_movement", "death_explosion"], // Mass enemies get both burst movement and death explosion
+    phantom: ["burst_movement"], // Phantoms teleport more frequently
+    orbiter: ["rapid_fire"], // Orbiters fire faster while circling
+    splitter: ["death_explosion"], // Splitters explode on death
     boss: [], // Boss behaviors are handled separately
 };
 

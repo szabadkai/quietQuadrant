@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+    <!-- Orbital ring -->
+    <ellipse cx="32" cy="32" rx="22" ry="8" fill="none" stroke="#4de8b0" stroke-width="2" opacity="0.6"
+        transform="rotate(-20 32 32)" />
+    <!-- Main body - sleek satellite shape -->
+    <ellipse cx="32" cy="32" rx="12" ry="16" fill="#0a2620" stroke="#4de8b0" stroke-width="2" />
+    <!-- Solar panels -->
+    <rect x="8" y="28" width="12" height="8" fill="#1a4a3a" stroke="#4de8b0" stroke-width="1" />
+    <rect x="44" y="28" width="12" height="8" fill="#1a4a3a" stroke="#4de8b0" stroke-width="1" />
+    <!-- Panel lines -->
+    <line x1="11" y1="28" x2="11" y2="36" stroke="#4de8b0" stroke-width="1" opacity="0.6" />
+    <line x1="14" y1="28" x2="14" y2="36" stroke="#4de8b0" stroke-width="1" opacity="0.6" />
+    <line x1="17" y1="28" x2="17" y2="36" stroke="#4de8b0" stroke-width="1" opacity="0.6" />
+    <line x1="47" y1="28" x2="47" y2="36" stroke="#4de8b0" stroke-width="1" opacity="0.6" />
+    <line x1="50" y1="28" x2="50" y2="36" stroke="#4de8b0" stroke-width="1" opacity="0.6" />
+    <line x1="53" y1="28" x2="53" y2="36" stroke="#4de8b0" stroke-width="1" opacity="0.6" />
+    <!-- Core eye -->
+    <circle cx="32" cy="28" r="5" fill="#4de8b0" />
+    <circle cx="32" cy="28" r="3" fill="#0a2620" />
+    <!-- Thruster -->
+    <polygon points="28,46 32,52 36,46" fill="#4de8b0" opacity="0.8" />
+</svg>
