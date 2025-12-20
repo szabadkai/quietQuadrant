@@ -43,16 +43,22 @@ export const StatsScreen = () => {
 			.filter((x) => x.upgrade);
 	}, [stats.upgradePickCounts]);
 
-	const topSynergies = useMemo(() => {
-		return Object.entries(stats.synergyUnlockCounts)
-			.sort((a, b) => b[1] - a[1])
-			.slice(0, 5)
-			.map(([id, count]) => ({
-				synergy: SYNERGY_DEFINITIONS.find((s) => s.id === id),
-				count,
-			}))
-			.filter((x) => x.synergy);
+	// Achievements: synergies that have been unlocked at least once
+	const unlockedAchievements = useMemo(() => {
+		return SYNERGY_DEFINITIONS.filter(
+			(syn) => (stats.synergyUnlockCounts[syn.id] ?? 0) > 0
+		).map((syn) => ({
+			synergy: syn,
+			count: stats.synergyUnlockCounts[syn.id] ?? 0,
+		}));
 	}, [stats.synergyUnlockCounts]);
+
+	const achievementProgress = useMemo(() => {
+		return {
+			unlocked: unlockedAchievements.length,
+			total: SYNERGY_DEFINITIONS.length,
+		};
+	}, [unlockedAchievements]);
 
 	const bossStats = useMemo(() => {
 		return BOSSES.map((boss) => ({
@@ -179,19 +185,33 @@ export const StatsScreen = () => {
 					</div>
 				)}
 
-				{topSynergies.length > 0 && (
-					<div className="stats-section">
-						<div className="stats-section-title">Synergies Unlocked</div>
-						<div className="stats-list">
-							{topSynergies.map(({ synergy, count }) => (
-								<div key={synergy!.id} className="stats-list-item">
-									<span className="pill synergy">{synergy!.name}</span>
-									<span className="stat-count">×{count}</span>
+				<div className="stats-section">
+					<div className="stats-section-title">Achievements</div>
+					<div className="achievements-progress">
+						<span className="achievements-progress-label">Synergies Discovered</span>
+						<span className="achievements-progress-count">
+							{achievementProgress.unlocked} / {achievementProgress.total}
+						</span>
+					</div>
+					{unlockedAchievements.length > 0 ? (
+						<div className="achievements-grid">
+							{unlockedAchievements.map(({ synergy, count }) => (
+								<div key={synergy.id} className="achievement-card">
+									<div className="achievement-card-header">
+										<span className="achievement-card-icon">🏆</span>
+										<span className="achievement-card-name">{synergy.name}</span>
+									</div>
+									<div className="achievement-card-desc">{synergy.description}</div>
+									<div className="achievement-card-count">Unlocked {count}×</div>
 								</div>
 							))}
 						</div>
-					</div>
-				)}
+					) : (
+						<div className="achievements-empty">
+							Discover synergies by combining upgrades during runs!
+						</div>
+					)}
+				</div>
 
 				{bossStats.length > 0 && (
 					<div className="stats-section">

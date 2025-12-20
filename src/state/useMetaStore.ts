@@ -232,11 +232,23 @@ interface MetaState {
         isNewStreak: boolean;
         previousStreak: number;
     };
+    achievementPopup: {
+        show: boolean;
+        synergyId: string;
+        synergyName: string;
+        synergyDescription: string;
+    };
     actions: {
         hydrateFromPersistence: () => Promise<void>;
         recordRun: (summary: RunSummary) => Promise<void>;
         updateSettings: (patch: Partial<Settings>) => Promise<void>;
         dismissStreakPopup: () => void;
+        showAchievement: (
+            synergyId: string,
+            name: string,
+            description: string
+        ) => void;
+        dismissAchievementPopup: () => void;
     };
 }
 
@@ -252,6 +264,12 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
         streak: 0,
         isNewStreak: false,
         previousStreak: 0,
+    },
+    achievementPopup: {
+        show: false,
+        synergyId: "",
+        synergyName: "",
+        synergyDescription: "",
     },
     actions: {
         hydrateFromPersistence: async () => {
@@ -393,6 +411,26 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
                     streak: 0,
                     isNewStreak: false,
                     previousStreak: 0,
+                },
+            }));
+        },
+        showAchievement: (synergyId, name, description) => {
+            set(() => ({
+                achievementPopup: {
+                    show: true,
+                    synergyId,
+                    synergyName: name,
+                    synergyDescription: description,
+                },
+            }));
+        },
+        dismissAchievementPopup: () => {
+            set(() => ({
+                achievementPopup: {
+                    show: false,
+                    synergyId: "",
+                    synergyName: "",
+                    synergyDescription: "",
                 },
             }));
         },

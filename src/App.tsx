@@ -23,6 +23,7 @@ import { UpgradeOverlay } from "./ui/components/UpgradeOverlay";
 import { WaveCountdown } from "./ui/components/WaveCountdown";
 import { TouchControls } from "./ui/components/TouchControls";
 import { StreakPopup } from "./ui/components/StreakPopup";
+import { AchievementPopup } from "./ui/components/AchievementPopup";
 import { useInputStore } from "./state/useInputStore";
 import { isMobileBrowser } from "./utils/device";
 import { isNativeMobile } from "./utils/mobile";
@@ -171,6 +172,7 @@ function App() {
 			{screen === "joinGame" && <JoinGame />}
 			<TouchControls />
 			<StreakPopup />
+			<AchievementPopup />
 		</div>
 	);
 }

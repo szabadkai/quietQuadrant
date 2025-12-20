@@ -683,6 +683,21 @@ export class MainScene extends Phaser.Scene {
         // Validate upgrade state after synergy activation (Requirements 4.3, 4.4)
         this.validateCurrentUpgradeState();
 
+        // Check if this is a first-time achievement unlock
+        const metaState = useMetaStore.getState();
+        const previousUnlockCount =
+            metaState.lifetimeStats.synergyUnlockCounts[id] ?? 0;
+        const synergyDef = SYNERGY_DEFINITIONS.find((s) => s.id === id);
+
+        if (previousUnlockCount === 0 && synergyDef) {
+            // First time unlocking this synergy - show achievement popup!
+            metaState.actions.showAchievement(
+                id,
+                synergyDef.name,
+                synergyDef.description
+            );
+        }
+
         useRunStore.getState().actions.unlockSynergy(id);
         const anchor =
             this.playerState?.sprite ?? this.playerTwoState?.sprite ?? null;
