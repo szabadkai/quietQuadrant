@@ -19,6 +19,8 @@ class GameManager {
     private seasonSeedValue?: number;
     private seasonBoss?: BossDefinition;
     private lastTwinControls?: TwinControlConfig;
+    private devAffixOverride?: WeeklyAffix;
+    private devBossOverride?: BossDefinition;
 
     init(containerId: string) {
         if (this.game) return;
@@ -77,11 +79,16 @@ class GameManager {
         }
         this.ensureSeason(seedId, options?.randomSeed);
         if (!this.seasonSeedId || !this.seasonSeedValue) return;
+
+        // Use dev overrides if set
+        const affix = this.devAffixOverride ?? this.currentAffix;
+        const boss = this.devBossOverride ?? this.seasonBoss;
+
         this.mainScene?.startNewRun(
             this.seasonSeedId,
             this.seasonSeedValue,
-            this.currentAffix,
-            this.seasonBoss,
+            affix,
+            boss,
             {
                 mode: options?.mode,
                 twinControls: options?.twinControls ?? this.lastTwinControls,
@@ -121,6 +128,46 @@ class GameManager {
             boss: this.seasonBoss,
             affix: this.currentAffix,
         };
+    }
+
+    // Dev methods for testing specific configurations
+    setDevAffixOverride(affixId: string | null) {
+        if (affixId === null) {
+            this.devAffixOverride = undefined;
+            return;
+        }
+        const affix = AFFIXES.find((a) => a.id === affixId);
+        this.devAffixOverride = affix;
+    }
+
+    setDevBossOverride(bossId: string | null) {
+        if (bossId === null) {
+            this.devBossOverride = undefined;
+            return;
+        }
+        const boss = BOSSES.find((b) => b.id === bossId);
+        this.devBossOverride = boss;
+    }
+
+    getDevOverrides() {
+        return {
+            affix: this.devAffixOverride,
+            boss: this.devBossOverride,
+        };
+    }
+
+    clearDevOverrides() {
+        this.devAffixOverride = undefined;
+        this.devBossOverride = undefined;
+    }
+
+    // Get all available affixes and bosses for dev panel
+    getAllAffixes() {
+        return AFFIXES;
+    }
+
+    getAllBosses() {
+        return BOSSES;
     }
 }
 

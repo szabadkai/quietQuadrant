@@ -341,11 +341,11 @@ canvas {
 	position: fixed;
 	top: 12px;
 	right: 12px;
-	width: min(420px, 90vw);
-	max-height: 80vh;
+	width: min(480px, 90vw);
+	max-height: 85vh;
 	overflow: auto;
 	z-index: 50;
-	background: rgba(7, 12, 18, 0.9);
+	background: rgba(7, 12, 18, 0.95);
 	border: 1px dashed var(--vector-line);
 	padding: 10px;
 	border-radius: 6px;
@@ -361,6 +361,50 @@ canvas {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	gap: 8px;
+}
+
+.dev-tabs {
+	display: flex;
+	gap: 4px;
+	flex: 1;
+	justify-content: center;
+}
+
+.dev-tab {
+	padding: 4px 12px;
+	font-size: 11px;
+	background: rgba(3, 7, 12, 0.6);
+	border: 1px solid var(--vector-line);
+	color: var(--vector-ink-soft);
+	border-radius: 4px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+.dev-tab.active {
+	background: rgba(120, 243, 255, 0.15);
+	color: var(--vector-ink-strong);
+	border-color: var(--vector-accent);
+}
+
+.dev-section {
+	margin-bottom: 16px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid rgba(120, 243, 255, 0.1);
+}
+
+.dev-section:last-child {
+	border-bottom: none;
+	margin-bottom: 0;
+}
+
+.dev-section-title {
+	font-size: 11px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--vector-accent);
+	margin-bottom: 10px;
 }
 
 .dev-row {
@@ -371,6 +415,16 @@ canvas {
 	margin-bottom: 6px;
 }
 
+.dev-row select {
+	width: 100%;
+	padding: 6px 8px;
+	background: rgba(3, 7, 12, 0.8);
+	border: 1px solid var(--vector-line);
+	color: var(--vector-ink-soft);
+	border-radius: 4px;
+	font-size: 12px;
+}
+
 .dev-row input[type="number"],
 .dev-row input[type="text"] {
 	width: 100%;
@@ -379,6 +433,81 @@ canvas {
 	border: 1px solid var(--vector-line);
 	color: var(--vector-ink-soft);
 	border-radius: 4px;
+}
+
+.dev-actions {
+	display: flex;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.dev-btn {
+	padding: 8px 14px;
+	font-size: 11px;
+	border-radius: 4px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+
+.dev-btn.primary {
+	background: rgba(120, 243, 255, 0.2);
+	border-color: var(--vector-accent);
+	color: var(--vector-ink-strong);
+}
+
+.dev-affix-desc {
+	font-size: 11px;
+	color: var(--vector-ink-soft);
+	padding: 4px 8px;
+	margin: 4px 0 8px;
+	background: rgba(0, 0, 0, 0.3);
+	border-radius: 4px;
+	border-left: 2px solid var(--vector-accent);
+}
+
+.dev-affix-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	max-height: 300px;
+	overflow-y: auto;
+}
+
+.dev-affix-item {
+	padding: 8px 10px;
+	background: rgba(3, 7, 12, 0.6);
+	border: 1px solid var(--vector-line);
+	border-radius: 4px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.dev-affix-item:hover {
+	background: rgba(120, 243, 255, 0.08);
+	border-color: var(--vector-accent);
+}
+
+.dev-affix-item.selected {
+	background: rgba(120, 243, 255, 0.15);
+	border-color: var(--vector-accent);
+}
+
+.dev-affix-name {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vector-ink-strong);
+	margin-bottom: 2px;
+}
+
+.dev-affix-item .dev-affix-desc {
+	margin: 0;
+	padding: 0;
+	background: none;
+	border: none;
+}
+
+.dev-config {
+	padding-top: 8px;
 }
 
 .dev-synergies {
