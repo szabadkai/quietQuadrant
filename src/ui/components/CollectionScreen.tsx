@@ -10,34 +10,32 @@ export const CollectionScreen = () => {
 	const cardCollection = useMetaStore((s) => s.cardCollection);
 	const [filter, setFilter] = useState<FilterRarity>("all");
 
+	// Only show unlocked upgrades - don't reveal locked ones
+	const unlockedUpgradeData = useMemo(() => {
+		return UPGRADE_CATALOG.filter((u) => cardCollection.unlockedUpgrades.includes(u.id));
+	}, [cardCollection.unlockedUpgrades]);
+
 	const collectionStats = useMemo(() => {
-		const total = UPGRADE_CATALOG.length;
 		const unlocked = cardCollection.unlockedUpgrades.length;
-		const legendaryTotal = UPGRADE_CATALOG.filter((u) => u.rarity === "legendary").length;
-		const legendaryUnlocked = UPGRADE_CATALOG.filter(
-			(u) => u.rarity === "legendary" && cardCollection.unlockedUpgrades.includes(u.id)
-		).length;
+		const legendaryUnlocked = unlockedUpgradeData.filter((u) => u.rarity === "legendary").length;
 		const totalBoosts = Object.values(cardCollection.upgradeBoosts).reduce((sum, b) => sum + b, 0);
 		const maxBoosts = unlocked * 5;
-		return { total, unlocked, legendaryTotal, legendaryUnlocked, totalBoosts, maxBoosts };
-	}, [cardCollection]);
+		return { unlocked, legendaryUnlocked, totalBoosts, maxBoosts };
+	}, [cardCollection, unlockedUpgradeData]);
 
 	const upgrades = useMemo(() => {
-		let filtered = [...UPGRADE_CATALOG];
+		let filtered = [...unlockedUpgradeData];
 		if (filter !== "all") {
 			filtered = filtered.filter((u) => u.rarity === filter);
 		}
-		// Sort: unlocked first, then by rarity (legendary > rare > common), then by name
+		// Sort by rarity (legendary > rare > common), then by name
 		const rarityOrder = { legendary: 0, rare: 1, common: 2 };
 		return filtered.sort((a, b) => {
-			const aUnlocked = cardCollection.unlockedUpgrades.includes(a.id);
-			const bUnlocked = cardCollection.unlockedUpgrades.includes(b.id);
-			if (aUnlocked !== bUnlocked) return aUnlocked ? -1 : 1;
 			const rarityDiff = rarityOrder[a.rarity] - rarityOrder[b.rarity];
 			if (rarityDiff !== 0) return rarityDiff;
 			return a.name.localeCompare(b.name);
 		});
-	}, [filter, cardCollection.unlockedUpgrades]);
+	}, [filter, unlockedUpgradeData]);
 
 	return (
 		<div className="overlay collection-screen">
@@ -47,13 +45,13 @@ export const CollectionScreen = () => {
 				<div className="collection-summary">
 					<div className="collection-stat">
 						<span className="collection-stat-value">
-							{collectionStats.unlocked}/{collectionStats.total}
+							{collectionStats.unlocked}
 						</span>
 						<span className="collection-stat-label">Cards Unlocked</span>
 					</div>
 					<div className="collection-stat legendary">
 						<span className="collection-stat-value">
-							{collectionStats.legendaryUnlocked}/{collectionStats.legendaryTotal}
+							{collectionStats.legendaryUnlocked}
 						</span>
 						<span className="collection-stat-label">Legendaries</span>
 					</div>
@@ -92,40 +90,44 @@ export const CollectionScreen = () => {
 
 				<div className="collection-grid">
 					{upgrades.map((upgrade) => {
-						const isUnlocked = cardCollection.unlockedUpgrades.includes(upgrade.id);
 						const boostLevel = cardCollection.upgradeBoosts[upgrade.id] ?? 0;
 						return (
 							<div
 								key={upgrade.id}
-								className={`collection-card ${upgrade.rarity} ${isUnlocked ? "unlocked" : "locked"}`}
+								className={`collection-card ${upgrade.rarity} unlocked`}
 							>
-								{!isUnlocked && <div className="lock-overlay">🔒</div>}
 								<div className="collection-card-header">
 									<span className="collection-card-rarity">{upgrade.rarity}</span>
-									{isUnlocked && boostLevel > 0 && (
+									{boostLevel > 0 && (
 										<span className="collection-card-boost">+{boostLevel}</span>
 									)}
 								</div>
 								<div className="collection-card-name">
-									{isUnlocked ? upgrade.name : "???"}
+									{upgrade.name}
 								</div>
 								<div className="collection-card-desc">
-									{isUnlocked ? upgrade.description : "Defeat bosses to unlock"}
+									{upgrade.description}
 								</div>
-								{isUnlocked && (
-									<div className="collection-card-boost-bar">
-										{[1, 2, 3, 4, 5].map((level) => (
-											<div
-												key={level}
-												className={`boost-pip ${level <= boostLevel ? "filled" : ""}`}
-											/>
-										))}
-									</div>
-								)}
+								<div className="collection-card-boost-bar">
+									{[1, 2, 3, 4, 5].map((level) => (
+										<div
+											key={level}
+											className={`boost-pip ${level <= boostLevel ? "filled" : ""}`}
+										/>
+									))}
+								</div>
 								<div className="collection-card-category">{upgrade.category}</div>
 							</div>
 						);
 					})}
+					{/* Show mystery cards hint if there are more to unlock */}
+					{filter === "all" && upgrades.length < 30 && (
+						<div className="collection-card mystery locked">
+							<div className="lock-overlay">?</div>
+							<div className="collection-card-name">More to discover...</div>
+							<div className="collection-card-desc">Defeat bosses to unlock new cards</div>
+						</div>
+					)}
 				</div>
 
 				<div className="collection-hint">
