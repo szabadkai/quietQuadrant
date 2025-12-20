@@ -64,7 +64,7 @@ function updateDailyStreak(stats: LifetimeStats): StreakUpdateResult {
     const lastPlayed = stats.lastPlayedDate;
 
     if (!lastPlayed) {
-        // First time playing
+        // First time playing - don't show popup for day 1
         return {
             stats: {
                 ...stats,
@@ -72,7 +72,7 @@ function updateDailyStreak(stats: LifetimeStats): StreakUpdateResult {
                 bestDailyStreak: Math.max(1, stats.bestDailyStreak),
                 lastPlayedDate: today,
             },
-            showPopup: true,
+            showPopup: false,
             isNewStreak: true,
             previousStreak: 0,
         };
@@ -104,19 +104,19 @@ function updateDailyStreak(stats: LifetimeStats): StreakUpdateResult {
                 bestDailyStreak: Math.max(newStreak, stats.bestDailyStreak),
                 lastPlayedDate: today,
             },
-            showPopup: true,
+            showPopup: true, // Show popup for day 2+
             isNewStreak: false,
             previousStreak: stats.currentDailyStreak,
         };
     } else {
-        // Streak broken
+        // Streak broken - reset to 1, don't show popup
         return {
             stats: {
                 ...stats,
                 currentDailyStreak: 1,
                 lastPlayedDate: today,
             },
-            showPopup: true,
+            showPopup: false,
             isNewStreak: true,
             previousStreak: stats.currentDailyStreak,
         };
