@@ -52,23 +52,40 @@ function getTodayDateString(): string {
     return new Date().toISOString().split("T")[0];
 }
 
-function updateDailyStreak(stats: LifetimeStats): LifetimeStats {
+type StreakUpdateResult = {
+    stats: LifetimeStats;
+    showPopup: boolean;
+    isNewStreak: boolean;
+    previousStreak: number;
+};
+
+function updateDailyStreak(stats: LifetimeStats): StreakUpdateResult {
     const today = getTodayDateString();
     const lastPlayed = stats.lastPlayedDate;
 
     if (!lastPlayed) {
         // First time playing
         return {
-            ...stats,
-            currentDailyStreak: 1,
-            bestDailyStreak: Math.max(1, stats.bestDailyStreak),
-            lastPlayedDate: today,
+            stats: {
+                ...stats,
+                currentDailyStreak: 1,
+                bestDailyStreak: Math.max(1, stats.bestDailyStreak),
+                lastPlayedDate: today,
+            },
+            showPopup: true,
+            isNewStreak: true,
+            previousStreak: 0,
         };
     }
 
     if (lastPlayed === today) {
         // Already played today, no change
-        return stats;
+        return {
+            stats,
+            showPopup: false,
+            isNewStreak: false,
+            previousStreak: stats.currentDailyStreak,
+        };
     }
 
     const lastDate = new Date(lastPlayed);
@@ -81,17 +98,27 @@ function updateDailyStreak(stats: LifetimeStats): LifetimeStats {
         // Consecutive day
         const newStreak = stats.currentDailyStreak + 1;
         return {
-            ...stats,
-            currentDailyStreak: newStreak,
-            bestDailyStreak: Math.max(newStreak, stats.bestDailyStreak),
-            lastPlayedDate: today,
+            stats: {
+                ...stats,
+                currentDailyStreak: newStreak,
+                bestDailyStreak: Math.max(newStreak, stats.bestDailyStreak),
+                lastPlayedDate: today,
+            },
+            showPopup: true,
+            isNewStreak: false,
+            previousStreak: stats.currentDailyStreak,
         };
     } else {
         // Streak broken
         return {
-            ...stats,
-            currentDailyStreak: 1,
-            lastPlayedDate: today,
+            stats: {
+                ...stats,
+                currentDailyStreak: 1,
+                lastPlayedDate: today,
+            },
+            showPopup: true,
+            isNewStreak: true,
+            previousStreak: stats.currentDailyStreak,
         };
     }
 }
@@ -199,10 +226,17 @@ interface MetaState {
     bestRunsBySeed: PerSeedBest;
     topRuns: RunSummary[];
     lifetimeStats: LifetimeStats;
+    streakPopup: {
+        show: boolean;
+        streak: number;
+        isNewStreak: boolean;
+        previousStreak: number;
+    };
     actions: {
         hydrateFromPersistence: () => Promise<void>;
         recordRun: (summary: RunSummary) => Promise<void>;
         updateSettings: (patch: Partial<Settings>) => Promise<void>;
+        dismissStreakPopup: () => void;
     };
 }
 
@@ -213,6 +247,12 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
     bestRunsBySeed: {},
     topRuns: [],
     lifetimeStats: defaultLifetimeStats,
+    streakPopup: {
+        show: false,
+        streak: 0,
+        isNewStreak: false,
+        previousStreak: 0,
+    },
     actions: {
         hydrateFromPersistence: async () => {
             const payload = await adapter.loadMeta();
@@ -234,7 +274,7 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
             };
 
             // Update daily streak on load
-            const updatedStats = updateDailyStreak(lifetimeStats);
+            const streakResult = updateDailyStreak(lifetimeStats);
 
             if (!payload) {
                 set(() => ({
@@ -242,7 +282,13 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
                     settings,
                     bestRunsBySeed,
                     topRuns,
-                    lifetimeStats: updatedStats,
+                    lifetimeStats: streakResult.stats,
+                    streakPopup: {
+                        show: streakResult.showPopup,
+                        streak: streakResult.stats.currentDailyStreak,
+                        isNewStreak: streakResult.isNewStreak,
+                        previousStreak: streakResult.previousStreak,
+                    },
                 }));
                 return;
             }
@@ -253,8 +299,28 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
                 isHydrated: true,
                 bestRunsBySeed,
                 topRuns,
-                lifetimeStats: updatedStats,
+                lifetimeStats: streakResult.stats,
+                streakPopup: {
+                    show: streakResult.showPopup,
+                    streak: streakResult.stats.currentDailyStreak,
+                    isNewStreak: streakResult.isNewStreak,
+                    previousStreak: streakResult.previousStreak,
+                },
             }));
+
+            // Persist updated streak if it changed
+            if (streakResult.showPopup) {
+                const meta: MetaStatePayload = {
+                    schemaVersion: 1,
+                    bestRun,
+                    totalRuns: payload.totalRuns,
+                    settings,
+                    bestRunsBySeed,
+                    topRuns,
+                    lifetimeStats: streakResult.stats,
+                };
+                await adapter.saveMeta(meta);
+            }
         },
         recordRun: async (summary) => {
             const state = get();
@@ -319,6 +385,16 @@ export const useMetaStore = create<MetaState>()((set, get) => ({
             };
             await adapter.saveMeta(meta);
             set(() => ({ settings }));
+        },
+        dismissStreakPopup: () => {
+            set(() => ({
+                streakPopup: {
+                    show: false,
+                    streak: 0,
+                    isNewStreak: false,
+                    previousStreak: 0,
+                },
+            }));
         },
     },
 }));
