@@ -14,9 +14,6 @@ import {
     calculateDiminishedMultiplier,
     applySynergyAdjustment,
     getLegendaryAdjustments,
-    calculateMaxDamageMultiplier,
-    calculateMaxDPSMultiplier,
-    calculateMaxDefenseMultiplier,
 } from "../../config/upgradeBalance";
 import { WAVES } from "../../config/waves";
 import type {
@@ -44,6 +41,15 @@ import {
     GamepadAdapter,
     type GamepadControlState,
 } from "../input/GamepadAdapter";
+import type {
+    PlayerStats,
+    AbilityState,
+    ChargeRuntime,
+    ShieldState,
+    MomentumState,
+    PilotRuntime,
+    UpgradeState,
+} from "./MainScene.types";
 
 const OBJECT_SCALE = 0.7;
 const COLOR_ACCENT = 0x9ff0ff;
@@ -55,65 +61,6 @@ const XP_ATTRACT_MIN_SPEED = 320;
 const XP_ATTRACT_MAX_SPEED = 760;
 const XP_ATTRACT_LERP_RATE = 10; // per-second factor for smoothing toward target velocity
 const PROJECTILE_MAX_LIFETIME_MS = 3800;
-
-type PlayerStats = {
-    moveSpeed: number;
-    damage: number;
-    fireRate: number; // shots per second
-    projectileSpeed: number;
-    projectiles: number;
-    pierce: number;
-    bounce: number;
-    maxHealth: number;
-    health: number;
-    critChance: number;
-    critMultiplier: number;
-};
-
-type AbilityState = {
-    dashCooldownMs: number;
-    dashDurationMs: number;
-    nextDashAt: number;
-    activeUntil: number;
-};
-
-type ChargeRuntime = {
-    ready: boolean;
-    holdMs: number;
-    damageBonus: number;
-    sizeBonus: number;
-    idleMs: number;
-};
-
-type ShieldState = {
-    hp: number;
-    activeUntil: number;
-    nextReadyAt: number;
-};
-
-type MomentumState = {
-    timerMs: number;
-    bonus: number;
-};
-
-type PilotRuntime = {
-    id: "p1" | "p2";
-    sprite: Phaser.Physics.Arcade.Image;
-    ability: AbilityState;
-    charge: ChargeRuntime;
-    momentum: MomentumState;
-    shield: ShieldState;
-    lastAimDirection: Phaser.Math.Vector2;
-    lastShotAt: number;
-    invulnUntil: number;
-    gamepadState: GamepadControlState;
-    control: ControlBinding;
-    shieldRing?: Phaser.GameObjects.Arc;
-};
-
-type UpgradeState = {
-    [id: string]: number;
-};
 
 export class MainScene extends Phaser.Scene {
     private player?: Phaser.Physics.Arcade.Image;
@@ -440,12 +387,6 @@ export class MainScene extends Phaser.Scene {
         if (this.elapsedAccumulator >= 0.2) {
             useRunStore.getState().actions.tick(this.elapsedAccumulator);
             this.elapsedAccumulator = 0;
-
-            // Periodic upgrade validation check (Requirements 4.4, 4.5, 1.5)
-            // Run every 0.2 seconds to catch any edge cases
-            if (Object.keys(this.upgradeStacks).length > 0) {
-                this.emergencyUpgradeValidation();
-            }
         }
 
         // In online mode, handle based on host/guest role
@@ -553,26 +494,12 @@ export class MainScene extends Phaser.Scene {
             return;
         }
 
-        // Additional safeguards against infinite damage builds (Requirement 1.5)
-        if (validation.metrics.maxDPS > 15.0) {
-            // Even if technically valid, reject extremely high DPS combinations
-            console.warn(
-                `Upgrade ${id} rejected: DPS too high (${validation.metrics.maxDPS.toFixed(
-                    2
-                )}x)`
-            );
-            return;
-        }
-
         this.upgradeStacks[id] = current + 1;
         this.pendingUpgradeOptions = [];
         useUIStore.getState().actions.closeUpgradeSelection();
         this.setPaused(false);
         this.applyUpgradeEffects(def);
         this.checkSynergies();
-
-        // Validate upgrade state after application (Requirements 4.4, 4.5)
-        this.validateCurrentUpgradeState();
 
         useRunStore.getState().actions.addUpgrade({
             id: def.id,
@@ -677,8 +604,6 @@ export class MainScene extends Phaser.Scene {
             default:
                 break;
         }
-        // Validate upgrade state after synergy activation (Requirements 4.3, 4.4)
-        this.validateCurrentUpgradeState();
 
         // Check if this is a first-time achievement unlock
         const metaState = useMetaStore.getState();
@@ -4006,111 +3931,6 @@ export class MainScene extends Phaser.Scene {
             this.playerStats.health,
             this.playerStats.maxHealth
         );
-    }
-
-    /**
-     * Get current upgrade power metrics for monitoring and validation
-     * Requirements 1.5, 4.4, 4.5
-     */
-    private getCurrentUpgradePowerMetrics() {
-        return {
-            maxDamage: calculateMaxDamageMultiplier(this.upgradeStacks),
-            maxDPS: calculateMaxDPSMultiplier(this.upgradeStacks),
-            maxDefense: calculateMaxDefenseMultiplier(this.upgradeStacks),
-            upgradeStacks: { ...this.upgradeStacks },
-            activeSynergies: Array.from(this.activeSynergies),
-        };
-    }
-
-    /**
-     * Validate current upgrade state and log warnings if approaching limits
-     * Requirements 4.4, 4.5
-     */
-    private validateCurrentUpgradeState(): boolean {
-        const validation = validateUpgradeCombinationDetailed(
-            this.upgradeStacks
-        );
-
-        if (!validation.valid) {
-            console.error(
-                "Invalid upgrade state detected:",
-                validation.reasons
-            );
-            console.error("Current metrics:", validation.metrics);
-            return false;
-        }
-
-        // Warn if approaching limits (80% of thresholds)
-        if (validation.metrics.maxDamage > 6.4) {
-            // 80% of 8.0 limit
-            console.warn(
-                `Damage approaching limit: ${validation.metrics.maxDamage.toFixed(
-                    2
-                )}x / 8.0x`
-            );
-        }
-
-        if (validation.metrics.maxDPS > 16.0) {
-            // 80% of 20.0 limit
-            console.warn(
-                `DPS approaching limit: ${validation.metrics.maxDPS.toFixed(
-                    2
-                )}x / 20.0x`
-            );
-        }
-
-        if (validation.metrics.maxDefense > 0.4) {
-            // 80% of 0.5 limit
-            console.warn(
-                `Defense approaching limit: ${(
-                    validation.metrics.maxDefense * 100
-                ).toFixed(1)}% / 50%`
-            );
-        }
-
-        return true;
-    }
-
-    /**
-     * Emergency safeguard to prevent infinite damage or invulnerability
-     * Called during critical game state changes
-     * Requirements 1.5, 4.4, 4.5
-     */
-    private emergencyUpgradeValidation(): void {
-        const metrics = this.getCurrentUpgradePowerMetrics();
-
-        // Hard caps to prevent game-breaking scenarios
-        if (metrics.maxDamage > 10.0) {
-            console.error(
-                "Emergency: Damage multiplier exceeded safe limits, capping at 10x"
-            );
-            // In a real scenario, we might need to adjust player stats or disable upgrades
-            // For now, we log the issue
-        }
-
-        if (metrics.maxDPS > 25.0) {
-            console.error(
-                "Emergency: DPS multiplier exceeded safe limits, capping at 25x"
-            );
-        }
-
-        if (metrics.maxDefense > 0.6) {
-            console.error(
-                "Emergency: Defense exceeded safe limits, capping at 60%"
-            );
-        }
-
-        // Validate that Glass Cannon health cap is properly enforced
-        if (
-            this.upgradeStacks["glass-cannon"] > 0 &&
-            this.playerStats.maxHealth > 1
-        ) {
-            console.error(
-                "Emergency: Glass Cannon health cap not properly enforced"
-            );
-            this.playerStats.maxHealth = 1;
-            this.playerStats.health = Math.min(this.playerStats.health, 1);
-        }
     }
 
     private levelUp() {
