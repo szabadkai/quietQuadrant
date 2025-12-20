@@ -12,6 +12,8 @@ const config: CapacitorConfig = {
     android: {
         backgroundColor: "#000000",
         allowMixedContent: true,
+        // Enable edge-to-edge display for tall aspect ratio devices
+        webContentsDebuggingEnabled: false,
     },
     server: {
         androidScheme: "https",
@@ -27,7 +29,8 @@ const config: CapacitorConfig = {
         },
         StatusBar: {
             style: "dark",
-            backgroundColor: "#000000",
+            backgroundColor: "#00000000",
+            overlaysWebView: true,
         },
     },
 };
