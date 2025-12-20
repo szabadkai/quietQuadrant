@@ -2,19 +2,7 @@ import Phaser from "phaser";
 import { soundManager } from "../../audio/SoundManager";
 import { BOSSES } from "../../config/bosses";
 import { getEnemyDefinition } from "../../config/enemies";
-import { SYNERGY_DEFINITIONS } from "../../config/synergies";
-import {
-    getUpgradeDefinition,
-    UPGRADE_CATALOG,
-    UPGRADE_RARITY_ODDS,
-} from "../../config/upgrades";
-import {
-    canStackUpgrade,
-    validateUpgradeCombinationDetailed,
-    calculateDiminishedMultiplier,
-    applySynergyAdjustment,
-    getLegendaryAdjustments,
-} from "../../config/upgradeBalance";
+import { UPGRADE_CATALOG, UPGRADE_RARITY_ODDS } from "../../config/upgrades";
 import { WAVES } from "../../config/waves";
 import type {
     BossDefinition,
@@ -48,8 +36,8 @@ import type {
     ShieldState,
     MomentumState,
     PilotRuntime,
-    UpgradeState,
 } from "./MainScene.types";
+import { UpgradeManager } from "./managers/UpgradeManager";
 
 const OBJECT_SCALE = 0.7;
 const COLOR_ACCENT = 0x9ff0ff;
@@ -60,7 +48,6 @@ const XP_ATTRACT_RADIUS = 180;
 const XP_ATTRACT_MIN_SPEED = 320;
 const XP_ATTRACT_MAX_SPEED = 760;
 const XP_ATTRACT_LERP_RATE = 10; // per-second factor for smoothing toward target velocity
-const PROJECTILE_MAX_LIFETIME_MS = 3800;
 
 export class MainScene extends Phaser.Scene {
     private player?: Phaser.Physics.Arcade.Image;
@@ -78,90 +65,6 @@ export class MainScene extends Phaser.Scene {
         critChance: 0.05,
         critMultiplier: 2,
     };
-    private chargeState = {
-        ready: false,
-        holdMs: 0,
-        damageBonus: 0.9,
-        sizeBonus: 0.2,
-        idleMs: 1000,
-    };
-    private capacitorConfig = {
-        stacks: 0,
-        idleMs: 1000,
-        damageBonus: 0.9,
-        sizeBonus: 0.2,
-        chargePierceBonus: 0,
-    };
-    private afterimageConfig = { stacks: 0, trailShots: 0, shotDamage: 0 };
-    private dashSparkConfig = { stacks: 0, shards: 0, damage: 0 };
-    private shieldConfig = {
-        stacks: 0,
-        shieldHp: 60,
-        durationMs: 0,
-        cooldownMs: 0,
-        nextReadyAt: 0,
-    };
-    private explosiveConfig = { stacks: 0, radius: 0, damageMultiplier: 0 };
-    private splitConfig = {
-        enabled: false,
-        forks: 2,
-        spreadDegrees: 12,
-        damageMultiplier: 0.5,
-    };
-    private chainArcConfig = {
-        stacks: 0,
-        range: 180,
-        damagePercent: 0.6,
-        cooldownMs: 150,
-        lastAt: 0,
-    };
-    private kineticConfig = {
-        stacks: 0,
-        healAmount: 0.3,
-        cooldownMs: 1200,
-        nextReadyAt: 0,
-    };
-    private momentumConfig = {
-        stacks: 0,
-        ramp: 0.25,
-        timeToMaxMs: 2000,
-        timerMs: 0,
-        bonus: 0,
-    };
-    private spreadConfig = { stacks: 0, spreadDegrees: 6, critBonus: 0 };
-    private homingConfig = { stacks: 0, range: 0, turnRate: 0 };
-    private projectileScale = 1;
-    private magnetConfig = { stacks: 0, radiusMult: 1, speedMult: 1 };
-    private stabilizerConfig = { stacks: 0, contactMultiplier: 1 };
-    private platingConfig = { stacks: 0, damageReduction: 0 };
-    private shrapnelConfig = { stacks: 0, shards: 0, damage: 0 };
-    // heavy hitter configs
-    private neutronCoreConfig = { active: false, speedMultiplier: 0.6 };
-    private glassCannonCap: number | null = null;
-    private singularityConfig = {
-        active: false,
-        radius: 140,
-        pullStrength: 520,
-    };
-    private bulletHellConfig = {
-        active: false,
-        fireRateMultiplier: 4,
-        damageMultiplier: 0.6,
-        inaccuracyRad: Phaser.Math.DegToRad(32),
-    };
-    private bloodFuelConfig = {
-        stacks: 0,
-        healPercent: 0.12,
-        fireCostPercent: 0.02,
-    };
-    private chainReactionConfig = { stacks: 0, radius: 70, damagePercent: 0.5 };
-    private quantumConfig = {
-        active: false,
-        wrapMargin: 18,
-        projectileLifetimeMs: PROJECTILE_MAX_LIFETIME_MS,
-    };
-    private berserkConfig = { stacks: 0, maxBonus: 1 };
-    private activeSynergies = new Set<string>();
     private difficulty = 1;
     private bossMaxHealth = 0;
 
@@ -190,8 +93,6 @@ export class MainScene extends Phaser.Scene {
     private xp = 0;
     private level = 1;
     private nextXpThreshold = 12;
-    private pendingUpgradeOptions: UpgradeDefinition[] = [];
-    private upgradeStacks: UpgradeState = {};
     private nextWaveCheckAt = 0;
     private intermissionActive = false;
     private intermissionRemainingMs = 0;
@@ -227,12 +128,37 @@ export class MainScene extends Phaser.Scene {
     private activeDelayedCalls: Phaser.Time.TimerEvent[] = [];
     private playerState?: PilotRuntime;
     private playerTwoState?: PilotRuntime;
+    private upgrades!: UpgradeManager;
+
+    // Scratch vectors to avoid per-frame allocations
+    private readonly _scratchVec = new Phaser.Math.Vector2();
+    private readonly _scratchVec2 = new Phaser.Math.Vector2();
+
+    // Cached store state to avoid multiple getState() calls per frame
+    private _frameCache = {
+        runStatus: "running" as string,
+        isHost: true,
+        isMobile: false,
+        activePilots: [] as PilotRuntime[],
+    };
 
     constructor() {
         super("MainScene");
     }
 
     create() {
+        this.upgrades = new UpgradeManager({
+            getPlayerStats: () => this.playerStats,
+            setPlayerStats: (stats) => Object.assign(this.playerStats, stats),
+            getPlayerState: () => this.playerState,
+            getPlayerTwoState: () => this.playerTwoState,
+            enforceHealthCap: () => this.enforceHealthCap(),
+            setPaused: (paused) => this.setPaused(paused),
+            spawnBurstVisual: (x, y, r, c, a) =>
+                this.spawnBurstVisual(x, y, r, c, a),
+            defaultShieldState: () => this.defaultShieldState(),
+            defaultMomentumState: () => this.defaultMomentumState(),
+        });
         this.screenBounds = new Phaser.Geom.Rectangle(
             32,
             32,
@@ -347,10 +273,10 @@ export class MainScene extends Phaser.Scene {
         projectile: Phaser.Physics.Arcade.Image,
         enemy: Phaser.Physics.Arcade.Image
     ) {
-        if (this.explosiveConfig.stacks <= 0) return;
-        const radius = this.explosiveConfig.radius;
+        if (this.upgrades.explosive.stacks <= 0) return;
+        const radius = this.upgrades.explosive.radius;
         if (radius <= 0) return;
-        const dmgMultiplier = this.explosiveConfig.damageMultiplier;
+        const dmgMultiplier = this.upgrades.explosive.damageMultiplier;
         const damage = (projectile.getData("damage") as number) * dmgMultiplier;
         const tags = (projectile.getData("tags") as string[] | undefined) ?? [];
         this.applyAoeDamage(enemy.x, enemy.y, radius, damage, tags);
@@ -361,8 +287,28 @@ export class MainScene extends Phaser.Scene {
         const dt = delta / 1000;
         this.updateStarfield(dt);
         if (!this.runActive || !this.playerState) return;
-        const runStatus = useRunStore.getState().status;
-        const activePilots = this.getActivePilots();
+
+        // Cache store state once per frame to avoid repeated getState() calls
+        const runState = useRunStore.getState();
+        const multiplayerState = useMultiplayerStore.getState();
+        const inputState = useInputStore.getState();
+        this._frameCache.runStatus = runState.status;
+        this._frameCache.isHost = multiplayerState.isHost;
+        this._frameCache.isMobile = inputState.isMobile;
+
+        // Cache active pilots (reuse array to avoid allocation)
+        this._frameCache.activePilots.length = 0;
+        if (this.isPilotActive(this.playerState)) {
+            this._frameCache.activePilots.push(this.playerState);
+        }
+        if (
+            (this.runMode === "twin" || this.runMode === "online") &&
+            this.isPilotActive(this.playerTwoState)
+        ) {
+            this._frameCache.activePilots.push(this.playerTwoState!);
+        }
+
+        const activePilots = this._frameCache.activePilots;
         if (activePilots.length === 0) return;
 
         const controlSnapshots = activePilots.map((pilot) => {
@@ -382,22 +328,22 @@ export class MainScene extends Phaser.Scene {
             return { pilot, binding, controls };
         });
 
-        if (runStatus !== "running") return;
+        if (this._frameCache.runStatus !== "running") return;
         this.elapsedAccumulator += dt;
         if (this.elapsedAccumulator >= 0.2) {
-            useRunStore.getState().actions.tick(this.elapsedAccumulator);
+            runState.actions.tick(this.elapsedAccumulator);
             this.elapsedAccumulator = 0;
         }
 
         // In online mode, handle based on host/guest role
-        const { isHost } = useMultiplayerStore.getState();
+        const isHost = this._frameCache.isHost;
         const isOnlineGuest = this.runMode === "online" && !isHost;
+        const isMobileInput = this._frameCache.isMobile;
 
         if (isOnlineGuest) {
             // Guest: Apply received game state, handle local input including shooting
             this.applyReceivedGameState();
             // Find local pilot and handle movement + shooting
-            const isMobileInput = useInputStore.getState().isMobile;
             controlSnapshots.forEach(({ pilot, binding, controls }) => {
                 if (binding.type === "keyboardMouse") {
                     this.handlePlayerMovement(pilot, dt, controls, binding);
@@ -420,7 +366,6 @@ export class MainScene extends Phaser.Scene {
             });
         } else {
             // Host or local: Run full simulation
-            const isMobileInput = useInputStore.getState().isMobile;
             controlSnapshots.forEach(({ pilot, binding, controls }) => {
                 // Handle remote players - sync their position from multiplayer store
                 if (binding.type === "remote") {
@@ -473,165 +418,7 @@ export class MainScene extends Phaser.Scene {
     }
 
     applyUpgrade(id: string) {
-        const def = getUpgradeDefinition(id);
-        if (!def) return;
-        const current = this.upgradeStacks[id] ?? 0;
-
-        // Check balance system stacking limits (Requirements 4.1, 4.4)
-        if (!canStackUpgrade(id, current)) return;
-        if (def.maxStacks && current >= def.maxStacks) return;
-
-        // Enhanced validation with detailed feedback (Requirements 4.4, 4.5, 1.5)
-        const testUpgrades = { ...this.upgradeStacks, [id]: current + 1 };
-        const validation = validateUpgradeCombinationDetailed(testUpgrades);
-
-        if (!validation.valid) {
-            // Log validation failure for debugging
-            console.warn(`Upgrade ${id} rejected:`, validation.reasons);
-            console.warn("Power metrics:", validation.metrics);
-
-            // Upgrade would exceed balance limits, reject it
-            return;
-        }
-
-        this.upgradeStacks[id] = current + 1;
-        this.pendingUpgradeOptions = [];
-        useUIStore.getState().actions.closeUpgradeSelection();
-        this.setPaused(false);
-        this.applyUpgradeEffects(def);
-        this.checkSynergies();
-
-        useRunStore.getState().actions.addUpgrade({
-            id: def.id,
-            stacks: this.upgradeStacks[id],
-        });
-    }
-
-    private checkSynergies() {
-        SYNERGY_DEFINITIONS.forEach((syn) => {
-            if (this.activeSynergies.has(syn.id)) return;
-            const ready = syn.requires.every(
-                (req) => (this.upgradeStacks[req] ?? 0) > 0
-            );
-            if (ready) {
-                this.enableSynergy(syn.id);
-            }
-        });
-    }
-
-    private enableSynergy(id: string) {
-        if (this.activeSynergies.has(id)) return;
-        this.activeSynergies.add(id);
-        switch (id) {
-            case "railgun": {
-                // Apply synergy power adjustments (Requirement 4.3)
-                const baseCritChance = 0.05;
-                const baseCritMultiplier = 0.25;
-                this.playerStats.critChance += applySynergyAdjustment(
-                    "railgun",
-                    baseCritChance
-                );
-                this.playerStats.critMultiplier += applySynergyAdjustment(
-                    "railgun",
-                    baseCritMultiplier
-                );
-                break;
-            }
-            case "meat-grinder": {
-                // Apply synergy power adjustments (Requirement 4.3)
-                const baseCritChance = 0.03;
-                const baseCritMultiplier = 0.15;
-                this.playerStats.critChance += applySynergyAdjustment(
-                    "meat-grinder",
-                    baseCritChance
-                );
-                this.playerStats.critMultiplier += applySynergyAdjustment(
-                    "meat-grinder",
-                    baseCritMultiplier
-                );
-                break;
-            }
-            case "vampire": {
-                // Apply synergy power adjustments (Requirement 4.3)
-                const baseCritChance = 0.03;
-                this.playerStats.critChance += applySynergyAdjustment(
-                    "vampire",
-                    baseCritChance
-                );
-                break;
-            }
-            case "tesla-coil": {
-                // Chain arc + explosive = boosted arc damage
-                this.chainArcConfig.damagePercent += 0.15;
-                break;
-            }
-            case "glass-storm": {
-                // Glass cannon + bullet hell = reduced accuracy penalty
-                this.bulletHellConfig.inaccuracyRad *= 0.5;
-                break;
-            }
-            case "phantom-striker": {
-                // Dash sparks + shrapnel = reduced dash cooldown
-                if (this.playerState) {
-                    this.playerState.ability.dashCooldownMs *= 0.75;
-                }
-                if (this.playerTwoState) {
-                    this.playerTwoState.ability.dashCooldownMs *= 0.75;
-                }
-                break;
-            }
-            case "gravity-well": {
-                // Singularity + explosive = bigger explosions
-                this.explosiveConfig.radius *= 1.3;
-                break;
-            }
-            case "sniper-elite": {
-                // Held charge + heatseeker = stronger homing on charged + crit bonus
-                this.homingConfig.turnRate *= 2;
-                this.playerStats.critMultiplier += 0.1;
-                break;
-            }
-            case "immortal-engine": {
-                // Shield pickup + kinetic siphon = longer shields
-                this.shieldConfig.durationMs *= 1.5;
-                break;
-            }
-            case "prism-cannon": {
-                // Prism spread + heavy barrel + sidecar = crit bonus
-                this.playerStats.critChance += 0.08;
-                break;
-            }
-            default:
-                break;
-        }
-
-        // Check if this is a first-time achievement unlock
-        const metaState = useMetaStore.getState();
-        const previousUnlockCount =
-            metaState.lifetimeStats.synergyUnlockCounts[id] ?? 0;
-        const synergyDef = SYNERGY_DEFINITIONS.find((s) => s.id === id);
-
-        if (previousUnlockCount === 0 && synergyDef) {
-            // First time unlocking this synergy - show achievement popup!
-            metaState.actions.showAchievement(
-                id,
-                synergyDef.name,
-                synergyDef.description
-            );
-        }
-
-        useRunStore.getState().actions.unlockSynergy(id);
-        const anchor =
-            this.playerState?.sprite ?? this.playerTwoState?.sprite ?? null;
-        if (anchor) {
-            this.spawnBurstVisual(
-                anchor.x,
-                anchor.y,
-                38 * OBJECT_SCALE,
-                COLOR_OVERLOAD,
-                0.85
-            );
-        }
+        this.upgrades.apply(id);
     }
 
     private setupVisuals() {
@@ -1768,99 +1555,11 @@ export class MainScene extends Phaser.Scene {
             }
         }
 
-        this.chargeState = {
-            ready: false,
-            holdMs: 0,
-            damageBonus: 0.9,
-            sizeBonus: 0.2,
-            idleMs: 1000,
-        };
-        this.capacitorConfig = {
-            stacks: 0,
-            idleMs: 1000,
-            damageBonus: 0.9,
-            sizeBonus: 0.2,
-            chargePierceBonus: 0,
-        };
-        this.afterimageConfig = { stacks: 0, trailShots: 0, shotDamage: 0 };
-        this.dashSparkConfig = { stacks: 0, shards: 0, damage: 0 };
-        this.shieldConfig = {
-            stacks: 0,
-            shieldHp: 60,
-            durationMs: 0,
-            cooldownMs: 0,
-            nextReadyAt: 0,
-        };
-        this.explosiveConfig = { stacks: 0, radius: 0, damageMultiplier: 0 };
-        this.splitConfig = {
-            enabled: false,
-            forks: 2,
-            spreadDegrees: 12,
-            damageMultiplier: 0.5,
-        };
-        this.chainArcConfig = {
-            stacks: 0,
-            range: 180,
-            damagePercent: 0.6,
-            cooldownMs: 150,
-            lastAt: 0,
-        };
-        this.kineticConfig = {
-            stacks: 0,
-            healAmount: 0.3,
-            cooldownMs: 1200,
-            nextReadyAt: 0,
-        };
-        this.momentumConfig = {
-            stacks: 0,
-            ramp: 0.25,
-            timeToMaxMs: 2000,
-            timerMs: 0,
-            bonus: 0,
-        };
-        this.spreadConfig = { stacks: 0, spreadDegrees: 6, critBonus: 0 };
-        this.homingConfig = { stacks: 0, range: 0, turnRate: 0 };
-        this.projectileScale = 1;
-        this.magnetConfig = { stacks: 0, radiusMult: 1, speedMult: 1 };
-        this.stabilizerConfig = { stacks: 0, contactMultiplier: 1 };
-        this.platingConfig = { stacks: 0, damageReduction: 0 };
-        this.shrapnelConfig = { stacks: 0, shards: 0, damage: 0 };
-        this.neutronCoreConfig = { active: false, speedMultiplier: 0.6 };
-        this.glassCannonCap = null;
-        this.singularityConfig = {
-            active: false,
-            radius: 140,
-            pullStrength: 520,
-        };
-        this.bulletHellConfig = {
-            active: false,
-            fireRateMultiplier: 4,
-            damageMultiplier: 0.6,
-            inaccuracyRad: Phaser.Math.DegToRad(32),
-        };
-        this.bloodFuelConfig = {
-            stacks: 0,
-            healPercent: 0.12,
-            fireCostPercent: 0.02,
-        };
-        this.chainReactionConfig = {
-            stacks: 0,
-            radius: 70,
-            damagePercent: 0.5,
-        };
-        this.quantumConfig = {
-            active: false,
-            wrapMargin: 18,
-            projectileLifetimeMs: PROJECTILE_MAX_LIFETIME_MS,
-        };
-        this.berserkConfig = { stacks: 0, maxBonus: 1 };
-        this.activeSynergies.clear();
+        this.upgrades.reset();
         this.waveIndex = 0;
         this.xp = 0;
         this.level = 1;
         this.nextXpThreshold = 12;
-        this.upgradeStacks = {};
-        this.pendingUpgradeOptions = [];
         this.nextWaveCheckAt = 0;
         this.intermissionActive = false;
         this.pendingWaveIndex = null;
@@ -2074,13 +1773,13 @@ export class MainScene extends Phaser.Scene {
         dt: number,
         fireHeld: boolean
     ) {
-        if (this.capacitorConfig.stacks === 0) return;
+        if (this.upgrades.capacitor.stacks === 0) return;
         if (fireHeld) {
             pilot.charge.holdMs = Math.min(
-                this.capacitorConfig.idleMs,
+                this.upgrades.capacitor.idleMs,
                 pilot.charge.holdMs + dt * 1000
             );
-            if (pilot.charge.holdMs >= this.capacitorConfig.idleMs) {
+            if (pilot.charge.holdMs >= this.upgrades.capacitor.idleMs) {
                 pilot.charge.ready = true;
             }
         } else {
@@ -2095,14 +1794,14 @@ export class MainScene extends Phaser.Scene {
         _controls: GamepadControlState,
         _binding: ControlBinding
     ) {
-        if (this.momentumConfig.stacks === 0 || !this.isPilotActive(pilot))
+        if (this.upgrades.momentum.stacks === 0 || !this.isPilotActive(pilot))
             return;
         const body = pilot.sprite.body as Phaser.Physics.Arcade.Body;
         const speed = body.velocity.length();
         const moving = speed > 30;
         if (moving) {
             pilot.momentum.timerMs = Math.min(
-                this.momentumConfig.timeToMaxMs,
+                this.upgrades.momentum.timeToMaxMs,
                 pilot.momentum.timerMs + dt * 1000
             );
         } else {
@@ -2112,11 +1811,11 @@ export class MainScene extends Phaser.Scene {
             );
         }
         const ratio = Phaser.Math.Clamp(
-            pilot.momentum.timerMs / this.momentumConfig.timeToMaxMs,
+            pilot.momentum.timerMs / this.upgrades.momentum.timeToMaxMs,
             0,
             1
         );
-        pilot.momentum.bonus = this.momentumConfig.ramp * ratio;
+        pilot.momentum.bonus = this.upgrades.momentum.ramp * ratio;
     }
 
     private tickShieldTimers() {
@@ -2168,7 +1867,7 @@ export class MainScene extends Phaser.Scene {
         const fireRequested = fireHeld || controls.fireActive;
         if (!fireRequested) return;
 
-        const useChargeMode = this.capacitorConfig.stacks > 0;
+        const useChargeMode = this.upgrades.capacitor.stacks > 0;
         const isCharged = useChargeMode && pilot.charge.ready;
         const dir = this.getAimDirection(
             pilot,
@@ -2177,16 +1876,16 @@ export class MainScene extends Phaser.Scene {
                 (this.runMode !== "twin" && this.runMode !== "online")
         );
         const spreadCount = this.playerStats.projectiles;
-        const spreadStepDeg = this.spreadConfig.spreadDegrees;
+        const spreadStepDeg = this.upgrades.spread.spreadDegrees;
         soundManager.playSfx("shoot");
         const baseDamage = this.playerStats.damage;
         const chargeDamageMultiplier = isCharged
-            ? 1 + this.capacitorConfig.damageBonus
+            ? 1 + this.upgrades.capacitor.damageBonus
             : 1;
-        const sizeScale = isCharged ? 1 + this.capacitorConfig.sizeBonus : 1;
+        const sizeScale = isCharged ? 1 + this.upgrades.capacitor.sizeBonus : 1;
         const pierce =
             this.playerStats.pierce +
-            (isCharged ? this.capacitorConfig.chargePierceBonus : 0);
+            (isCharged ? this.upgrades.capacitor.chargePierceBonus : 0);
         const bounce = this.playerStats.bounce;
         const tags = this.buildProjectileTags(isCharged);
         const fireRateBonus = 1 + pilot.momentum.bonus;
@@ -2247,17 +1946,20 @@ export class MainScene extends Phaser.Scene {
         ) as Phaser.Physics.Arcade.Image;
         if (!bullet) return null;
         const sizeScale =
-            (config.sizeMultiplier ?? 1) * this.projectileScale * OBJECT_SCALE;
-        const isHeavy = this.neutronCoreConfig.active;
+            (config.sizeMultiplier ?? 1) *
+            this.upgrades.projectileScale *
+            OBJECT_SCALE;
+        const isHeavy = this.upgrades.neutronCore.active;
         const isRailgun =
-            config.charged === true && this.activeSynergies.has("railgun");
+            config.charged === true &&
+            this.upgrades.activeSynergies.has("railgun");
         bullet.setActive(true);
         bullet.setVisible(true);
         bullet.setScale(sizeScale);
         const body = bullet.body as Phaser.Physics.Arcade.Body;
         const projectileSpeed =
             this.playerStats.projectileSpeed *
-            (isHeavy ? this.neutronCoreConfig.speedMultiplier : 1);
+            (isHeavy ? this.upgrades.neutronCore.speedMultiplier : 1);
         if (isHeavy) {
             const radius = 12 * sizeScale;
             body.setCircle(radius);
@@ -2288,8 +1990,8 @@ export class MainScene extends Phaser.Scene {
         bullet.setData("isHeavy", isHeavy);
         bullet.setData(
             "expireAt",
-            this.quantumConfig.active
-                ? this.time.now + this.quantumConfig.projectileLifetimeMs
+            this.upgrades.quantum.active
+                ? this.time.now + this.upgrades.quantum.projectileLifetimeMs
                 : null
         );
         bullet.setTint(
@@ -2309,12 +2011,13 @@ export class MainScene extends Phaser.Scene {
     }
 
     private getPierceWithSynergy(basePierce: number, isCharged: boolean) {
-        if (isCharged && this.activeSynergies.has("railgun")) return 999;
+        if (isCharged && this.upgrades.activeSynergies.has("railgun"))
+            return 999;
         return basePierce;
     }
 
     private getBerserkBonus() {
-        if (this.berserkConfig.stacks <= 0) return 0;
+        if (this.upgrades.berserk.stacks <= 0) return 0;
         const maxHealth = Math.max(this.playerStats.maxHealth, 1);
         const healthRatio = Phaser.Math.Clamp(
             this.playerStats.health / maxHealth,
@@ -2323,15 +2026,15 @@ export class MainScene extends Phaser.Scene {
         );
         const missing = 1 - healthRatio;
         return Phaser.Math.Clamp(
-            missing * this.berserkConfig.maxBonus,
+            missing * this.upgrades.berserk.maxBonus,
             0,
-            this.berserkConfig.maxBonus
+            this.upgrades.berserk.maxBonus
         );
     }
 
     private applyInaccuracy(dir: Phaser.Math.Vector2) {
-        const maxError = this.bulletHellConfig.active
-            ? this.bulletHellConfig.inaccuracyRad
+        const maxError = this.upgrades.bulletHell.active
+            ? this.upgrades.bulletHell.inaccuracyRad
             : 0;
         if (maxError <= 0) return dir;
         const offset = this.randFloat(-maxError, maxError);
@@ -2339,9 +2042,9 @@ export class MainScene extends Phaser.Scene {
     }
 
     private payBloodFuelCost() {
-        if (this.bloodFuelConfig.stacks <= 0) return true;
+        if (this.upgrades.bloodFuel.stacks <= 0) return true;
         const cost =
-            this.playerStats.health * this.bloodFuelConfig.fireCostPercent;
+            this.playerStats.health * this.upgrades.bloodFuel.fireCostPercent;
         if (cost <= 0) return true;
         this.playerStats.health -= cost;
         this.enforceHealthCap();
@@ -2362,9 +2065,9 @@ export class MainScene extends Phaser.Scene {
         dir: Phaser.Math.Vector2,
         pilot: PilotRuntime
     ) {
-        if (this.afterimageConfig.trailShots <= 0) return;
+        if (this.upgrades.afterimage.trailShots <= 0) return;
         if (!this.isPilotActive(pilot)) return;
-        const shots = this.afterimageConfig.trailShots;
+        const shots = this.upgrades.afterimage.trailShots;
         const spacing = 18;
         const tags = this.buildProjectileTags(false).concat(["afterimage"]);
         for (let i = 1; i <= shots; i++) {
@@ -2379,7 +2082,7 @@ export class MainScene extends Phaser.Scene {
                 x: pos.x,
                 y: pos.y,
                 dir,
-                damage: this.afterimageConfig.shotDamage,
+                damage: this.upgrades.afterimage.shotDamage,
                 pierce,
                 bounce,
                 tags,
@@ -2394,23 +2097,23 @@ export class MainScene extends Phaser.Scene {
         dashDir: Phaser.Math.Vector2
     ) {
         if (
-            this.dashSparkConfig.shards <= 0 ||
-            this.dashSparkConfig.damage <= 0
+            this.upgrades.dashSpark.shards <= 0 ||
+            this.upgrades.dashSpark.damage <= 0
         )
             return;
         const baseDir =
             dashDir.lengthSq() > 0
                 ? dashDir.clone().normalize()
                 : new Phaser.Math.Vector2(1, 0);
-        for (let i = 0; i < this.dashSparkConfig.shards; i++) {
-            const arcAngle = (i / this.dashSparkConfig.shards) * Math.PI * 2;
+        for (let i = 0; i < this.upgrades.dashSpark.shards; i++) {
+            const arcAngle = (i / this.upgrades.dashSpark.shards) * Math.PI * 2;
             const jitter = this.randFloat(-0.15, 0.15);
             const dir = baseDir.clone().rotate(arcAngle + jitter);
             this.spawnBullet({
                 x: origin.x,
                 y: origin.y,
                 dir,
-                damage: this.dashSparkConfig.damage,
+                damage: this.upgrades.dashSpark.damage,
                 pierce: 0,
                 bounce: 0,
                 tags: ["dash-spark"],
@@ -2520,7 +2223,7 @@ export class MainScene extends Phaser.Scene {
         pilot.shieldRing.setPosition(pilot.sprite.x, pilot.sprite.y);
         const remaining = pilot.shield.activeUntil - this.time.now;
         const alpha = Phaser.Math.Clamp(
-            remaining / this.shieldConfig.durationMs,
+            remaining / this.upgrades.shield.durationMs,
             0.3,
             0.8
         );
@@ -2546,7 +2249,8 @@ export class MainScene extends Phaser.Scene {
                     ? (enemy.getData("slowFactor") as number | undefined) ?? 1
                     : 1;
             const pilot = this.getNearestPilot(enemy.x, enemy.y) ?? targetPilot;
-            const targetVec = new Phaser.Math.Vector2(
+            // Reuse scratch vector to avoid per-enemy allocation
+            const targetVec = this._scratchVec.set(
                 pilot.sprite.x - enemy.x,
                 pilot.sprite.y - enemy.y
             );
@@ -2589,16 +2293,12 @@ export class MainScene extends Phaser.Scene {
                 }
 
                 // Handle rapid fire behavior for elite watchers
+                // Reuse scratch vector 2 for pilot position
+                this._scratchVec2.set(pilot.sprite.x, pilot.sprite.y);
                 if (isElite && eliteBehaviors.includes("rapid_fire")) {
-                    this.tryEliteRapidFire(
-                        enemy,
-                        new Phaser.Math.Vector2(pilot.sprite.x, pilot.sprite.y)
-                    );
+                    this.tryEliteRapidFire(enemy, this._scratchVec2);
                 } else {
-                    this.tryEnemyShot(
-                        enemy,
-                        new Phaser.Math.Vector2(pilot.sprite.x, pilot.sprite.y)
-                    );
+                    this.tryEnemyShot(enemy, this._scratchVec2);
                 }
             } else if (kind === "mass") {
                 // Check for burst movement behavior
@@ -2615,11 +2315,9 @@ export class MainScene extends Phaser.Scene {
                         targetVec.y * speed * 0.7 * slowFactor
                     );
                 }
-                this.tryEnemyShot(
-                    enemy,
-                    new Phaser.Math.Vector2(pilot.sprite.x, pilot.sprite.y),
-                    true
-                );
+                // Reuse scratch vector 2 for pilot position
+                this._scratchVec2.set(pilot.sprite.x, pilot.sprite.y);
+                this.tryEnemyShot(enemy, this._scratchVec2, true);
             } else if (kind === "boss") {
                 this.updateBossMovement(enemy);
             }
@@ -2756,10 +2454,10 @@ export class MainScene extends Phaser.Scene {
     }
 
     private handleHeatseekingProjectiles(dt: number) {
-        if (this.homingConfig.stacks <= 0) return;
-        const maxTurn = this.homingConfig.turnRate * dt;
-        if (maxTurn <= 0 || this.homingConfig.range <= 0) return;
-        const rangeSq = this.homingConfig.range * this.homingConfig.range;
+        if (this.upgrades.homing.stacks <= 0) return;
+        const maxTurn = this.upgrades.homing.turnRate * dt;
+        if (maxTurn <= 0 || this.upgrades.homing.range <= 0) return;
+        const rangeSq = this.upgrades.homing.range * this.upgrades.homing.range;
         const activeEnemies: Phaser.Physics.Arcade.Image[] = [];
         this.enemies.getChildren().forEach((enemyChild) => {
             const enemy = enemyChild as Phaser.Physics.Arcade.Image;
@@ -2842,7 +2540,7 @@ export class MainScene extends Phaser.Scene {
     }
 
     private handleXpAttraction(dt: number) {
-        const radius = XP_ATTRACT_RADIUS * this.magnetConfig.radiusMult;
+        const radius = XP_ATTRACT_RADIUS * this.upgrades.magnet.radiusMult;
         const maxDistSq = radius * radius;
         const lerp = Phaser.Math.Clamp(dt * XP_ATTRACT_LERP_RATE, 0, 1);
         const pilots = this.getActivePilots();
@@ -2873,8 +2571,8 @@ export class MainScene extends Phaser.Scene {
                 1
             );
             const targetSpeed = Phaser.Math.Linear(
-                XP_ATTRACT_MIN_SPEED * this.magnetConfig.speedMult,
-                XP_ATTRACT_MAX_SPEED * this.magnetConfig.speedMult,
+                XP_ATTRACT_MIN_SPEED * this.upgrades.magnet.speedMult,
+                XP_ATTRACT_MAX_SPEED * this.upgrades.magnet.speedMult,
                 proximity
             );
             const targetVx = dirX * targetSpeed;
@@ -3456,15 +3154,15 @@ export class MainScene extends Phaser.Scene {
         projectile: Phaser.Physics.Arcade.Image,
         enemy: Phaser.Physics.Arcade.Image
     ) {
-        if (!this.splitConfig.enabled) return;
+        if (!this.upgrades.split.enabled) return;
         if (!projectile.getData("canFork")) return;
         const sourceType = projectile.getData("sourceType") as string;
         if (sourceType === "fork") return;
 
         projectile.setData("canFork", false);
-        const forks = this.splitConfig.forks;
-        const spreadDeg = this.splitConfig.spreadDegrees;
-        const damageMultiplier = this.splitConfig.damageMultiplier;
+        const forks = this.upgrades.split.forks;
+        const spreadDeg = this.upgrades.split.spreadDegrees;
+        const damageMultiplier = this.upgrades.split.damageMultiplier;
         const spreadRad = Phaser.Math.DegToRad(spreadDeg);
         const baseDir = new Phaser.Math.Vector2(
             enemy.x - projectile.x,
@@ -3518,14 +3216,14 @@ export class MainScene extends Phaser.Scene {
         maxHealth?: number,
         source?: Phaser.Physics.Arcade.Image
     ) {
-        if (this.chainReactionConfig.stacks <= 0) return;
+        if (this.upgrades.chainReaction.stacks <= 0) return;
         if (kind === "boss") return;
         const damageBase =
-            (maxHealth ?? 0) * this.chainReactionConfig.damagePercent;
+            (maxHealth ?? 0) * this.upgrades.chainReaction.damagePercent;
         if (damageBase <= 0) return;
         const radius =
-            this.chainReactionConfig.radius *
-            (this.activeSynergies.has("black-hole-sun") ? 1.25 : 1);
+            this.upgrades.chainReaction.radius *
+            (this.upgrades.activeSynergies.has("black-hole-sun") ? 1.25 : 1);
         this.enemies.getChildren().forEach((child) => {
             const enemy = child as Phaser.Physics.Arcade.Image;
             if (!enemy.active || enemy === source) return;
@@ -3540,20 +3238,20 @@ export class MainScene extends Phaser.Scene {
     }
 
     private applyBloodFuelHeal() {
-        if (this.bloodFuelConfig.stacks <= 0) return;
+        if (this.upgrades.bloodFuel.stacks <= 0) return;
         const healAmount =
-            this.playerStats.maxHealth * this.bloodFuelConfig.healPercent;
+            this.playerStats.maxHealth * this.upgrades.bloodFuel.healPercent;
         if (healAmount <= 0) return;
         this.healPlayer(healAmount);
     }
 
     private applySingularityPull(target: Phaser.Physics.Arcade.Image) {
-        if (!this.singularityConfig.active) return;
+        if (!this.upgrades.singularity.active) return;
         const center = new Phaser.Math.Vector2(target.x, target.y);
         const radius =
-            this.singularityConfig.radius *
-            (this.activeSynergies.has("black-hole-sun") ? 1.2 : 1);
-        const strength = this.singularityConfig.pullStrength;
+            this.upgrades.singularity.radius *
+            (this.upgrades.activeSynergies.has("black-hole-sun") ? 1.2 : 1);
+        const strength = this.upgrades.singularity.pullStrength;
         this.enemies.getChildren().forEach((child) => {
             const enemy = child as Phaser.Physics.Arcade.Image;
             if (!enemy.active || enemy === target) return;
@@ -3579,11 +3277,14 @@ export class MainScene extends Phaser.Scene {
     }
 
     private tryChainArc(origin: Phaser.Physics.Arcade.Image) {
-        if (this.chainArcConfig.stacks <= 0) return;
+        if (this.upgrades.chainArc.stacks <= 0) return;
         const now = this.time.now;
-        if (now < this.chainArcConfig.lastAt + this.chainArcConfig.cooldownMs)
+        if (
+            now <
+            this.upgrades.chainArc.lastAt + this.upgrades.chainArc.cooldownMs
+        )
             return;
-        const range = this.chainArcConfig.range;
+        const range = this.upgrades.chainArc.range;
         let nearest: Phaser.Physics.Arcade.Image | null = null;
         let nearestDist = Number.MAX_VALUE;
         this.enemies.getChildren().forEach((child) => {
@@ -3603,9 +3304,9 @@ export class MainScene extends Phaser.Scene {
         });
         if (!nearest) return;
         const target = nearest as Phaser.Physics.Arcade.Image;
-        this.chainArcConfig.lastAt = now;
+        this.upgrades.chainArc.lastAt = now;
         const damage =
-            this.playerStats.damage * this.chainArcConfig.damagePercent;
+            this.playerStats.damage * this.upgrades.chainArc.damagePercent;
         this.applyDamageToEnemy(target, damage, undefined, { tags: ["arc"] });
         const line = this.add
             .line(
@@ -3643,8 +3344,8 @@ export class MainScene extends Phaser.Scene {
                 proj.destroy();
                 return;
             }
-            if (this.quantumConfig.active) {
-                const wrap = this.quantumConfig.wrapMargin;
+            if (this.upgrades.quantum.active) {
+                const wrap = this.upgrades.quantum.wrapMargin;
                 if (proj.x < left) proj.x = right - wrap;
                 else if (proj.x > right) proj.x = left + wrap;
                 if (proj.y < top) proj.y = bottom - wrap;
@@ -3815,15 +3516,16 @@ export class MainScene extends Phaser.Scene {
     }
 
     private tryShieldPickup() {
-        if (this.shieldConfig.stacks <= 0) return;
+        if (this.upgrades.shield.stacks <= 0) return;
         const now = this.time.now;
-        if (now < this.shieldConfig.nextReadyAt) return;
-        this.shieldConfig.nextReadyAt = now + this.shieldConfig.cooldownMs;
+        if (now < this.upgrades.shield.nextReadyAt) return;
+        this.upgrades.shield.nextReadyAt =
+            now + this.upgrades.shield.cooldownMs;
         const activate = (pilot?: PilotRuntime) => {
             if (!pilot || !this.isPilotActive(pilot)) return;
-            pilot.shield.activeUntil = now + this.shieldConfig.durationMs;
-            pilot.shield.hp = this.shieldConfig.shieldHp;
-            pilot.shield.nextReadyAt = this.shieldConfig.nextReadyAt;
+            pilot.shield.activeUntil = now + this.upgrades.shield.durationMs;
+            pilot.shield.hp = this.upgrades.shield.shieldHp;
+            pilot.shield.nextReadyAt = this.upgrades.shield.nextReadyAt;
             if (!pilot.shieldRing) {
                 pilot.shieldRing = this.add
                     .circle(
@@ -3854,17 +3556,18 @@ export class MainScene extends Phaser.Scene {
     }
 
     private tryKineticHeal() {
-        if (this.kineticConfig.stacks <= 0) return;
+        if (this.upgrades.kinetic.stacks <= 0) return;
         const now = this.time.now;
-        if (now < this.kineticConfig.nextReadyAt) return;
-        this.kineticConfig.nextReadyAt = now + this.kineticConfig.cooldownMs;
-        this.healPlayer(this.kineticConfig.healAmount);
+        if (now < this.upgrades.kinetic.nextReadyAt) return;
+        this.upgrades.kinetic.nextReadyAt =
+            now + this.upgrades.kinetic.cooldownMs;
+        this.healPlayer(this.upgrades.kinetic.healAmount);
     }
 
     private spawnShrapnel(enemy: Phaser.Physics.Arcade.Image) {
-        if (this.shrapnelConfig.stacks <= 0) return;
-        const shards = this.shrapnelConfig.shards;
-        const damage = this.shrapnelConfig.damage;
+        if (this.upgrades.shrapnel.stacks <= 0) return;
+        const shards = this.upgrades.shrapnel.shards;
+        const damage = this.upgrades.shrapnel.damage;
         if (shards <= 0 || damage <= 0) return;
         const baseDir = new Phaser.Math.Vector2(1, 0);
         for (let i = 0; i < shards; i++) {
@@ -3922,10 +3625,10 @@ export class MainScene extends Phaser.Scene {
     }
 
     private enforceHealthCap() {
-        if (this.glassCannonCap === null) return;
+        if (this.upgrades.glassCannonCap === null) return;
         this.playerStats.maxHealth = Math.min(
             this.playerStats.maxHealth,
-            this.glassCannonCap
+            this.upgrades.glassCannonCap
         );
         this.playerStats.health = Math.min(
             this.playerStats.health,
@@ -3939,17 +3642,17 @@ export class MainScene extends Phaser.Scene {
         useRunStore
             .getState()
             .actions.setXp(this.level, this.xp, this.nextXpThreshold);
-        this.pendingUpgradeOptions = this.rollUpgradeOptions();
-        if (this.pendingUpgradeOptions.length === 0) return;
+        this.upgrades.pendingOptions = this.rollUpgradeOptions();
+        if (this.upgrades.pendingOptions.length === 0) return;
         this.setPaused(true);
         useUIStore.getState().actions.openUpgradeSelection();
         gameEvents.emit(GAME_EVENT_KEYS.levelUp, {
-            options: this.pendingUpgradeOptions,
+            options: this.upgrades.pendingOptions,
         });
     }
 
     private rollUpgradeOptions(): UpgradeDefinition[] {
-        const sidecarStacks = this.upgradeStacks["sidecar"] ?? 0;
+        const sidecarStacks = this.upgrades.stacks["sidecar"] ?? 0;
 
         // Get card collection from meta store
         const cardCollection = useMetaStore.getState().cardCollection;
@@ -3960,7 +3663,7 @@ export class MainScene extends Phaser.Scene {
             // Only show unlocked upgrades
             if (!unlockedUpgrades.includes(u.id)) return false;
 
-            const stacks = this.upgradeStacks[u.id] ?? 0;
+            const stacks = this.upgrades.stacks[u.id] ?? 0;
             // Prism Spread only matters when Sidecar is active; hide it until then.
             if (u.id === "prism-spread" && sidecarStacks === 0) return false;
             return u.maxStacks ? stacks < u.maxStacks : true;
@@ -4011,382 +3714,6 @@ export class MainScene extends Phaser.Scene {
             weightedPool.splice(pickedIndex, 1);
         }
         return picks;
-    }
-
-    private applyUpgradeEffects(def: UpgradeDefinition) {
-        switch (def.id) {
-            case "power-shot": {
-                // Apply diminishing returns for power shot stacking (Requirement 4.1)
-                const stacks = this.upgradeStacks[def.id];
-                const effectiveMultiplier = calculateDiminishedMultiplier(
-                    "power-shot",
-                    stacks,
-                    1.15
-                );
-                const previousMultiplier =
-                    stacks > 1
-                        ? calculateDiminishedMultiplier(
-                              "power-shot",
-                              stacks - 1,
-                              1.15
-                          )
-                        : 1;
-                const incrementalMultiplier =
-                    effectiveMultiplier / previousMultiplier;
-
-                this.playerStats.damage *= incrementalMultiplier;
-                this.playerStats.critChance += 0.05;
-                break;
-            }
-            case "rapid-fire": {
-                // Apply diminishing returns for rapid fire stacking (Requirement 4.1)
-                const stacks = this.upgradeStacks[def.id];
-                const effectiveMultiplier = calculateDiminishedMultiplier(
-                    "rapid-fire",
-                    stacks,
-                    1.15
-                );
-                const previousMultiplier =
-                    stacks > 1
-                        ? calculateDiminishedMultiplier(
-                              "rapid-fire",
-                              stacks - 1,
-                              1.15
-                          )
-                        : 1;
-                const incrementalMultiplier =
-                    effectiveMultiplier / previousMultiplier;
-
-                this.playerStats.fireRate *= incrementalMultiplier;
-                break;
-            }
-            case "swift-projectiles": {
-                this.playerStats.projectileSpeed *= 1.2;
-                break;
-            }
-            case "engine-tune": {
-                this.playerStats.moveSpeed *= 1.1;
-                break;
-            }
-            case "plating": {
-                const stacks = this.upgradeStacks[def.id];
-                this.playerStats.maxHealth += 1;
-                this.playerStats.health = Math.min(
-                    this.playerStats.maxHealth,
-                    this.playerStats.health + 1
-                );
-
-                // Apply diminishing returns for defensive upgrades (Requirement 4.5)
-                // Calculate effective damage reduction with diminishing returns
-                let effectiveDamageReduction = 0;
-                for (let i = 1; i <= stacks; i++) {
-                    const baseReduction = 0.08;
-                    if (i <= 3) {
-                        effectiveDamageReduction += baseReduction;
-                    } else {
-                        // Diminishing returns after 3 stacks
-                        effectiveDamageReduction += baseReduction * 0.8;
-                    }
-                }
-                effectiveDamageReduction = Math.min(
-                    effectiveDamageReduction,
-                    0.5
-                ); // Cap at 50%
-
-                this.platingConfig = {
-                    stacks,
-                    damageReduction: effectiveDamageReduction,
-                };
-                this.enforceHealthCap();
-                useRunStore
-                    .getState()
-                    .actions.setVitals(
-                        this.playerStats.health,
-                        this.playerStats.maxHealth
-                    );
-                break;
-            }
-            case "sidecar": {
-                this.playerStats.projectiles += 1;
-                break;
-            }
-            case "pierce": {
-                this.playerStats.pierce += 1;
-                break;
-            }
-            case "heavy-barrel": {
-                // Apply diminishing returns for heavy barrel stacking (Requirement 4.1)
-                const stacks = this.upgradeStacks[def.id];
-                const effectiveMultiplier = calculateDiminishedMultiplier(
-                    "heavy-barrel",
-                    stacks,
-                    1.2
-                );
-                const previousMultiplier =
-                    stacks > 1
-                        ? calculateDiminishedMultiplier(
-                              "heavy-barrel",
-                              stacks - 1,
-                              1.2
-                          )
-                        : 1;
-                const incrementalMultiplier =
-                    effectiveMultiplier / previousMultiplier;
-
-                this.playerStats.damage *= incrementalMultiplier;
-                this.playerStats.fireRate *= 0.9;
-                this.projectileScale *= 1.1;
-                this.playerStats.critMultiplier += 0.05;
-                break;
-            }
-            case "rebound": {
-                this.playerStats.bounce += 2;
-                this.playerStats.projectileSpeed *= 0.95;
-                break;
-            }
-            case "dash-sparks": {
-                const stacks = this.upgradeStacks[def.id];
-                const shards = 6 + (stacks - 1) * 2;
-                const damage =
-                    this.playerStats.damage * (1.6 + (stacks - 1) * 0.25);
-                this.dashSparkConfig = { stacks, shards, damage };
-                break;
-            }
-            case "held-charge": {
-                const stacks = this.upgradeStacks[def.id];
-                const idleMs = Math.max(400, 800 - (stacks - 1) * 80);
-                const damageBonus = 0.8 + (stacks - 1) * 0.12;
-                const sizeBonus = 0.2;
-                const chargePierceBonus = 2 + (stacks - 1);
-                this.capacitorConfig = {
-                    stacks,
-                    idleMs,
-                    damageBonus,
-                    sizeBonus,
-                    chargePierceBonus,
-                };
-                this.chargeState.idleMs = idleMs;
-                this.chargeState.damageBonus = damageBonus;
-                this.chargeState.sizeBonus = sizeBonus;
-                if (this.playerState) {
-                    this.playerState.charge.idleMs = idleMs;
-                    this.playerState.charge.damageBonus = damageBonus;
-                    this.playerState.charge.sizeBonus = sizeBonus;
-                }
-                if (this.playerTwoState) {
-                    this.playerTwoState.charge.idleMs = idleMs;
-                    this.playerTwoState.charge.damageBonus = damageBonus;
-                    this.playerTwoState.charge.sizeBonus = sizeBonus;
-                }
-                break;
-            }
-            case "shield-pickup": {
-                const stacks = this.upgradeStacks[def.id];
-                const durationMs = (2 + (stacks - 1) * 0.3) * 1000;
-                const cooldownMs = Math.max(3000, 5000 - (stacks - 1) * 600);
-                const shieldHp = 60;
-                this.shieldConfig = {
-                    stacks,
-                    shieldHp,
-                    durationMs,
-                    cooldownMs,
-                    nextReadyAt: 0,
-                };
-                this.playerState &&
-                    (this.playerState.shield = this.defaultShieldState());
-                this.playerTwoState &&
-                    (this.playerTwoState.shield = this.defaultShieldState());
-                break;
-            }
-            case "kinetic-siphon": {
-                const stacks = this.upgradeStacks[def.id];
-                const healAmount = 0.3 + (stacks - 1) * 0.1;
-                const cooldownMs = Math.max(800, 1200 - (stacks - 1) * 200);
-                this.kineticConfig = {
-                    stacks,
-                    healAmount,
-                    cooldownMs,
-                    nextReadyAt: 0,
-                };
-                break;
-            }
-            case "prism-spread": {
-                const stacks = this.upgradeStacks[def.id];
-                const prevBonus = this.spreadConfig.critBonus;
-                const spreadDegrees = Math.max(3, 6 - (stacks - 1) * 1.5);
-                const critBonus = 0.05 * stacks;
-                this.spreadConfig = { stacks, spreadDegrees, critBonus };
-                this.playerStats.critChance += critBonus - prevBonus;
-                break;
-            }
-            case "momentum-feed": {
-                const stacks = this.upgradeStacks[def.id];
-                const ramp = 0.25 + (stacks - 1) * 0.05;
-                const timeToMaxMs = Math.max(1400, 2000 - (stacks - 1) * 200);
-                this.momentumConfig = {
-                    stacks,
-                    ramp,
-                    timeToMaxMs,
-                    timerMs: 0,
-                    bonus: 0,
-                };
-                if (this.playerState) {
-                    this.playerState.momentum = this.defaultMomentumState();
-                }
-                if (this.playerTwoState) {
-                    this.playerTwoState.momentum = this.defaultMomentumState();
-                }
-                break;
-            }
-            case "split-shot": {
-                const stacks = this.upgradeStacks[def.id];
-                const damageMultiplier = 0.5 + (stacks - 1) * 0.1;
-                const spreadDegrees = Math.max(8, 12 - (stacks - 1) * 2);
-                this.splitConfig = {
-                    enabled: true,
-                    forks: 2,
-                    spreadDegrees,
-                    damageMultiplier,
-                };
-                break;
-            }
-            case "explosive-impact": {
-                const stacks = this.upgradeStacks[def.id];
-                const radius = (32 + (stacks - 1) * 10) * OBJECT_SCALE;
-                const damageMultiplier = 0.55 + (stacks - 1) * 0.1;
-                this.explosiveConfig = { stacks, radius, damageMultiplier };
-                break;
-            }
-            case "chain-arc": {
-                const stacks = this.upgradeStacks[def.id];
-                const range = 180 + (stacks - 1) * 20;
-                const damagePercent = 0.6 + (stacks - 1) * 0.1;
-                const cooldownMs = Math.max(120, 150 - (stacks - 1) * 20);
-                this.chainArcConfig = {
-                    stacks,
-                    range,
-                    damagePercent,
-                    cooldownMs,
-                    lastAt: 0,
-                };
-                break;
-            }
-            case "magnet-coil": {
-                const stacks = this.upgradeStacks[def.id];
-                const radiusMult = 1 + 0.3 + (stacks - 1) * 0.15;
-                const speedMult = 1 + 0.2 + (stacks - 1) * 0.1;
-                this.magnetConfig = { stacks, radiusMult, speedMult };
-                break;
-            }
-            case "stabilizers": {
-                const stacks = this.upgradeStacks[def.id];
-                const contactMultiplier = Math.max(0.5, 1 - 0.15 * stacks);
-                this.stabilizerConfig = { stacks, contactMultiplier };
-                break;
-            }
-            case "shrapnel": {
-                const stacks = this.upgradeStacks[def.id];
-                const shards = 6 + (stacks - 1) * 2;
-                const damage =
-                    this.playerStats.damage * (0.35 + (stacks - 1) * 0.05);
-                this.shrapnelConfig = { stacks, shards, damage };
-                break;
-            }
-            case "heatseeker": {
-                const stacks = this.upgradeStacks[def.id];
-                const range = 240 + (stacks - 1) * 60;
-                const turnRate = Phaser.Math.DegToRad(
-                    stacks === 1 ? 10 : stacks === 2 ? 30 : 90
-                );
-                this.homingConfig = { stacks, range, turnRate };
-                break;
-            }
-            case "neutron-core": {
-                this.neutronCoreConfig = { active: true, speedMultiplier: 0.6 };
-                this.projectileScale *= 1.15;
-                this.playerStats.projectileSpeed *=
-                    this.neutronCoreConfig.speedMultiplier;
-                break;
-            }
-            case "glass-cannon": {
-                // Apply legendary upgrade adjustments (Requirement 4.2)
-                const adjustments = getLegendaryAdjustments("glass-cannon");
-                this.glassCannonCap = 1;
-                this.playerStats.damage *= adjustments.damageMultiplier || 2.5;
-                this.playerStats.critChance +=
-                    adjustments.critChanceBonus || 0.08;
-                this.playerStats.maxHealth = Math.min(
-                    this.playerStats.maxHealth,
-                    1
-                );
-                this.playerStats.health = Math.min(
-                    this.playerStats.health,
-                    this.playerStats.maxHealth
-                );
-                useRunStore
-                    .getState()
-                    .actions.setVitals(
-                        this.playerStats.health,
-                        this.playerStats.maxHealth
-                    );
-                break;
-            }
-            case "singularity-rounds": {
-                this.singularityConfig = {
-                    active: true,
-                    radius: 160,
-                    pullStrength: 640,
-                };
-                break;
-            }
-            case "bullet-hell": {
-                // Apply legendary upgrade adjustments (Requirement 4.2)
-                const adjustments = getLegendaryAdjustments("bullet-hell");
-                const fireRateMultiplier =
-                    adjustments.fireRateMultiplier || 3.0;
-                const damageMultiplier = adjustments.damageMultiplier || 0.7;
-
-                this.bulletHellConfig = {
-                    active: true,
-                    fireRateMultiplier,
-                    damageMultiplier,
-                    inaccuracyRad: Phaser.Math.DegToRad(34),
-                };
-                this.playerStats.fireRate *= fireRateMultiplier;
-                this.playerStats.damage *= damageMultiplier;
-                break;
-            }
-            case "blood-fuel": {
-                const stacks = this.upgradeStacks[def.id];
-                const healPercent = 0.12 + (stacks - 1) * 0.03;
-                const fireCostPercent = 0.02 * stacks;
-                this.bloodFuelConfig = { stacks, healPercent, fireCostPercent };
-                break;
-            }
-            case "chain-reaction": {
-                const stacks = this.upgradeStacks[def.id];
-                const radius = 70 + (stacks - 1) * 10;
-                const damagePercent = 0.5 + (stacks - 1) * 0.05;
-                this.chainReactionConfig = { stacks, radius, damagePercent };
-                break;
-            }
-            case "quantum-tunneling": {
-                this.quantumConfig = {
-                    active: true,
-                    wrapMargin: 18,
-                    projectileLifetimeMs: PROJECTILE_MAX_LIFETIME_MS,
-                };
-                break;
-            }
-            case "berserk-module": {
-                const stacks = this.upgradeStacks[def.id];
-                const maxBonus = 1 + (stacks - 1) * 0.5;
-                this.berserkConfig = { stacks, maxBonus };
-                break;
-            }
-            default:
-                break;
-        }
     }
 
     private beginWaveIntermission(nextWaveIndex: number) {
@@ -4778,10 +4105,10 @@ export class MainScene extends Phaser.Scene {
         const now = this.time.now;
         if (now < pilot.invulnUntil) return;
         const contactMultiplier = isContact
-            ? this.stabilizerConfig.contactMultiplier
+            ? this.upgrades.stabilizer.contactMultiplier
             : 1;
         const armorReduction = Math.min(
-            Math.max(this.platingConfig.damageReduction, 0),
+            Math.max(this.upgrades.plating.damageReduction, 0),
             0.6
         );
         const armorMultiplier = 1 - armorReduction;
