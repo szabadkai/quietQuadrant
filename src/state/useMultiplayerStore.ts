@@ -1,5 +1,35 @@
 import { create } from "zustand";
 
+// Re-export network sync types and functions from dedicated module
+// The full implementation is in src/network/NetworkSync.ts
+export {
+    type DeltaTracker,
+    type GuestStateBuffer,
+    type GameStateDelta,
+    type EntitySnapshot,
+    createDeltaTracker,
+    createGuestStateBuffer,
+    generateDelta,
+    applyDelta,
+    getAdaptiveTick,
+    BASE_TICK_INTERVAL,
+    POSITION_THRESHOLD,
+    VELOCITY_THRESHOLD,
+    ROTATION_THRESHOLD,
+} from "../network/NetworkSync";
+
+import {
+    type DeltaTracker,
+    type GuestStateBuffer,
+    type GameStateDelta,
+    createDeltaTracker,
+    createGuestStateBuffer,
+    generateDelta,
+    applyDelta,
+    getAdaptiveTick,
+    BASE_TICK_INTERVAL,
+} from "../network/NetworkSync";
+
 // Lazy import Trystero with MQTT strategy (works without HTTPS)
 let trysteroModule: any = null;
 const getTrystero = async () => {
@@ -11,17 +41,13 @@ const getTrystero = async () => {
 };
 
 // ICE server configuration for better WebRTC connectivity
-// TODO: Move credentials to environment variables for production
 const EXPRESSTURN_URL = import.meta.env.VITE_TURN_URL || "";
 const EXPRESSTURN_USERNAME = import.meta.env.VITE_TURN_USERNAME || "";
 const EXPRESSTURN_PASSWORD = import.meta.env.VITE_TURN_PASSWORD || "";
 
 const rtcConfig: RTCConfiguration = {
     iceServers: [
-        // Single STUN server (one is sufficient for NAT traversal)
         { urls: "stun:stun.l.google.com:19302" },
-        // TURN server - use ExpressTURN if configured, otherwise Open Relay
-        // Note: VITE_TURN_URL should include the port (e.g., "relay1.expressturn.com:3478")
         ...(EXPRESSTURN_URL
             ? [
                   {
@@ -138,6 +164,11 @@ interface MultiplayerState {
     latestGameState: GameStateSync | null;
     onGameStateUpdate: GameStateCallback | null;
     onGuestBullet: GuestBulletCallback | null;
+    // Delta encoding state
+    deltaTracker: DeltaTracker | null;
+    guestStateBuffer: GuestStateBuffer | null;
+    lastBroadcastTime: number;
+    adaptiveTickInterval: number;
     actions: {
         setMode: (mode: MultiplayerMode) => void;
         createRoom: () => Promise<string>;
@@ -149,11 +180,13 @@ interface MultiplayerState {
         ) => void;
         sendGameAction: (action: any) => void;
         sendGameState: (state: GameStateSync) => void;
+        sendGameStateDelta: (state: GameStateSync, entityCount: number) => void;
         startGame: () => void;
         setOnGameStart: (callback: (() => void) | null) => void;
         setOnGameStateUpdate: (callback: GameStateCallback | null) => void;
         setOnGuestBullet: (callback: GuestBulletCallback | null) => void;
         sendGuestBullet: (bullet: GuestBulletRequest) => void;
+        requestFullSync: () => void;
     };
 }
 
@@ -170,6 +203,11 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
     latestGameState: null,
     onGameStateUpdate: null,
     onGuestBullet: null,
+    // Delta encoding state
+    deltaTracker: null,
+    guestStateBuffer: null,
+    lastBroadcastTime: 0,
+    adaptiveTickInterval: BASE_TICK_INTERVAL,
     actions: {
         setMode: (mode) => set({ mode }),
 
@@ -180,7 +218,12 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                 .toUpperCase();
 
             try {
-                set({ connectionState: "connecting", roomCode, isHost: true });
+                set({
+                    connectionState: "connecting",
+                    roomCode,
+                    isHost: true,
+                    deltaTracker: createDeltaTracker(), // Initialize delta tracker for host
+                });
 
                 const { joinRoom, selfId } = await getTrystero();
                 const room = joinRoom(
@@ -193,7 +236,9 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                 const [, getPlayerUpdate] = room.makeAction("playerUpdate");
                 const [, getGameAction] = room.makeAction("gameAction");
                 const [, getGameState] = room.makeAction("gameState");
+                const [, getGameStateDelta] = room.makeAction("gameStateDelta");
                 const [, getGuestBullet] = room.makeAction("guestBullet");
+                const [, getSyncRequest] = room.makeAction("syncRequest");
 
                 getGuestBullet((bullet: GuestBulletRequest) => {
                     if (!bullet) return;
@@ -233,6 +278,7 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                     }
                 });
 
+                // Legacy full state handler (for compatibility)
                 getGameState((state: GameStateSync) => {
                     if (!state) return;
                     set({ latestGameState: state });
@@ -240,8 +286,41 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                     if (onGameStateUpdate) onGameStateUpdate(state);
                 });
 
+                // Delta state handler
+                getGameStateDelta((delta: GameStateDelta) => {
+                    if (!delta) return;
+                    let { guestStateBuffer } = get();
+                    if (!guestStateBuffer) {
+                        guestStateBuffer = createGuestStateBuffer();
+                        set({ guestStateBuffer });
+                    }
+                    const reconstructed = applyDelta(guestStateBuffer, delta);
+                    if (reconstructed) {
+                        set({
+                            latestGameState: reconstructed,
+                            guestStateBuffer,
+                        });
+                        const { onGameStateUpdate } = get();
+                        if (onGameStateUpdate) onGameStateUpdate(reconstructed);
+                    }
+                });
+
+                // Handle sync requests from guest
+                getSyncRequest((_: any, peerId: string) => {
+                    console.log("Guest requested full sync:", peerId);
+                    const { deltaTracker } = get();
+                    if (deltaTracker) {
+                        // Force next broadcast to be a full sync
+                        deltaTracker.lastFullSync = 0;
+                    }
+                });
+
                 room.onPeerJoin((peerId: string) => {
-                    const { connectedPeers } = get();
+                    const { connectedPeers, deltaTracker } = get();
+                    // Force full sync when new peer joins
+                    if (deltaTracker) {
+                        deltaTracker.lastFullSync = 0;
+                    }
                     set({
                         connectedPeers: [...connectedPeers, peerId],
                         connectionState: "connected",
@@ -279,7 +358,12 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
 
         joinRoom: async (roomCode) => {
             try {
-                set({ connectionState: "connecting", roomCode, isHost: false });
+                set({
+                    connectionState: "connecting",
+                    roomCode,
+                    isHost: false,
+                    guestStateBuffer: createGuestStateBuffer(), // Initialize guest buffer
+                });
 
                 const { joinRoom, selfId } = await getTrystero();
                 const room = joinRoom(
@@ -292,6 +376,7 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                 const [, getPlayerUpdate] = room.makeAction("playerUpdate");
                 const [, getGameAction] = room.makeAction("gameAction");
                 const [, getGameState] = room.makeAction("gameState");
+                const [, getGameStateDelta] = room.makeAction("gameStateDelta");
 
                 getPlayerUpdate((data: any, peerId: string) => {
                     if (!data) return;
@@ -325,11 +410,31 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                     }
                 });
 
+                // Legacy full state handler
                 getGameState((state: GameStateSync) => {
                     if (!state) return;
                     set({ latestGameState: state });
                     const { onGameStateUpdate } = get();
                     if (onGameStateUpdate) onGameStateUpdate(state);
+                });
+
+                // Delta state handler - primary sync method
+                getGameStateDelta((delta: GameStateDelta) => {
+                    if (!delta) return;
+                    let { guestStateBuffer } = get();
+                    if (!guestStateBuffer) {
+                        guestStateBuffer = createGuestStateBuffer();
+                        set({ guestStateBuffer });
+                    }
+                    const reconstructed = applyDelta(guestStateBuffer, delta);
+                    if (reconstructed) {
+                        set({
+                            latestGameState: reconstructed,
+                            guestStateBuffer,
+                        });
+                        const { onGameStateUpdate } = get();
+                        if (onGameStateUpdate) onGameStateUpdate(reconstructed);
+                    }
                 });
 
                 room.onPeerJoin((peerId: string) => {
@@ -379,6 +484,10 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
                 peerId: null,
                 connectedPeers: [],
                 playerStates: {},
+                deltaTracker: null,
+                guestStateBuffer: null,
+                lastBroadcastTime: 0,
+                adaptiveTickInterval: BASE_TICK_INTERVAL,
             });
             (get() as any).room = null;
         },
@@ -426,6 +535,41 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
             }
         },
 
+        // New delta-based sync method - primary sync for online play
+        sendGameStateDelta: (state: GameStateSync, entityCount: number) => {
+            const room = (get() as any).room;
+            if (!room) return;
+
+            const now = Date.now();
+            const { deltaTracker, lastBroadcastTime, adaptiveTickInterval } =
+                get();
+
+            // Calculate adaptive tick interval based on entity count
+            const newTickInterval = getAdaptiveTick(entityCount);
+            if (newTickInterval !== adaptiveTickInterval) {
+                set({ adaptiveTickInterval: newTickInterval });
+            }
+
+            // Check if enough time has passed
+            if (now - lastBroadcastTime < adaptiveTickInterval) {
+                return;
+            }
+
+            if (!deltaTracker) {
+                // Fallback to full state if no tracker
+                const [sendGameState] = room.makeAction("gameState");
+                sendGameState(state);
+                set({ lastBroadcastTime: now });
+                return;
+            }
+
+            // Generate and send delta
+            const delta = generateDelta(deltaTracker, state);
+            const [sendGameStateDelta] = room.makeAction("gameStateDelta");
+            sendGameStateDelta(delta);
+            set({ lastBroadcastTime: now });
+        },
+
         startGame: () => {
             const { isHost, actions } = get();
             if (isHost) {
@@ -452,6 +596,17 @@ export const useMultiplayerStore = create<MultiplayerState>()((set, get) => ({
             if (room) {
                 const [sendGuestBullet] = room.makeAction("guestBullet");
                 sendGuestBullet(bullet);
+            }
+        },
+
+        // Guest can request a full sync if state seems corrupted
+        requestFullSync: () => {
+            const room = (get() as any).room;
+            if (room) {
+                const [sendSyncRequest] = room.makeAction("syncRequest");
+                sendSyncRequest({ type: "fullSync" });
+                // Reset guest buffer to prepare for fresh state
+                set({ guestStateBuffer: createGuestStateBuffer() });
             }
         },
     },

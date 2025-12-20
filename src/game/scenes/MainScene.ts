@@ -38,6 +38,12 @@ import type {
 } from "./MainScene.types";
 import { UpgradeManager } from "./managers/UpgradeManager";
 import { BossManager } from "./managers/BossManager";
+import {
+    EntityInterpolator,
+    BulletPredictor,
+    LatencyEstimator,
+    SNAP_THRESHOLD,
+} from "../../network/Interpolation";
 
 const OBJECT_SCALE = 0.7;
 const COLOR_ACCENT = 0x9ff0ff;
@@ -119,6 +125,17 @@ export class MainScene extends Phaser.Scene {
     private playerTwoState?: PilotRuntime;
     private upgrades!: UpgradeManager;
     private bossManager!: BossManager;
+
+    // Network interpolation for smooth multiplayer (guest-side)
+    private enemyInterpolator = new EntityInterpolator(0.2, SNAP_THRESHOLD);
+    private enemyBulletPredictor = new BulletPredictor();
+    private playerBulletPredictor = new BulletPredictor();
+    private hostPlayerInterpolator = new EntityInterpolator(
+        0.25,
+        SNAP_THRESHOLD
+    );
+    private latencyEstimator = new LatencyEstimator();
+    private lastNetworkUpdateTime = 0;
 
     // Scratch vectors to avoid per-frame allocations
     private readonly _scratchVec = new Phaser.Math.Vector2();
@@ -896,15 +913,12 @@ export class MainScene extends Phaser.Scene {
 
     private lastRemotePos?: { x: number; y: number };
     private lastGameStateBroadcast = 0;
-    private readonly GAME_STATE_BROADCAST_INTERVAL = 33; // ~30fps for game state
 
     private broadcastGameState() {
         const now = this.time.now;
-        if (
-            now - this.lastGameStateBroadcast <
-            this.GAME_STATE_BROADCAST_INTERVAL
-        )
-            return;
+        // Note: Adaptive tick interval is now handled in sendGameStateDelta
+        // We still do a basic throttle here to avoid calling the function too often
+        if (now - this.lastGameStateBroadcast < 16) return; // Max 60fps calls
         this.lastGameStateBroadcast = now;
 
         const { actions } = useMultiplayerStore.getState();
@@ -986,27 +1000,49 @@ export class MainScene extends Phaser.Scene {
             pendingWave: this.pendingWaveIndex,
         };
 
-        actions.sendGameState(gameState);
+        // Use delta-based sync with adaptive tick rate
+        const entityCount =
+            enemyData.length + bulletData.length + playerBulletData.length;
+        actions.sendGameStateDelta(gameState, entityCount);
     }
 
     private applyReceivedGameState() {
         const { latestGameState, isHost } = useMultiplayerStore.getState();
         if (!latestGameState || isHost) return;
 
-        // Apply player positions (P1 is host's ship for guest)
+        const now = performance.now();
+        const deltaTime = (now - this.lastNetworkUpdateTime) / 1000;
+        this.lastNetworkUpdateTime = now;
+
+        // Estimate latency from timestamp difference
+        this.latencyEstimator.estimateFromTimestamp(
+            latestGameState.timestamp,
+            this.time.now
+        );
+
+        // Apply host player position (P1 is host's ship for guest)
         if (this.playerState && latestGameState.players.p1) {
             const p1 = latestGameState.players.p1;
-            this.playerState.sprite.x = Phaser.Math.Linear(
-                this.playerState.sprite.x,
+
+            // Update interpolator target
+            this.hostPlayerInterpolator.updateTarget(
+                "host",
                 p1.x,
-                0.5
-            );
-            this.playerState.sprite.y = Phaser.Math.Linear(
-                this.playerState.sprite.y,
                 p1.y,
-                0.5
+                p1.rotation
             );
-            this.playerState.sprite.rotation = p1.rotation;
+
+            // Get interpolated position
+            const interpolated = this.hostPlayerInterpolator.getPosition(
+                "host",
+                deltaTime
+            );
+            if (interpolated) {
+                this.playerState.sprite.x = interpolated.x;
+                this.playerState.sprite.y = interpolated.y;
+                this.playerState.sprite.rotation =
+                    interpolated.rotation ?? p1.rotation;
+            }
 
             // Disable physics for remote player
             const body = this.playerState.sprite
@@ -1017,135 +1053,14 @@ export class MainScene extends Phaser.Scene {
             }
         }
 
-        // Apply enemy positions - spawn if needed, update if exists
-        const activeEnemies = this.enemies
-            .getChildren()
-            .filter((e: any) => e.active) as Phaser.Physics.Arcade.Image[];
+        // Apply enemy positions with interpolation
+        this.applyEnemyStateWithInterpolation(latestGameState, deltaTime);
 
-        // Spawn missing enemies or update existing ones
-        latestGameState.enemies.forEach((enemyData, index) => {
-            if (!enemyData.active) return;
+        // Apply bullet positions with prediction
+        this.applyBulletStateWithPrediction(latestGameState);
 
-            let enemy = activeEnemies[index];
-            if (!enemy) {
-                // Determine texture based on enemy kind
-                const kind = enemyData.kind;
-                const textureKey = kind; // Use kind directly as texture key
-
-                // Spawn a new enemy for the guest
-                enemy = this.enemies.get(
-                    enemyData.x,
-                    enemyData.y,
-                    textureKey
-                ) as Phaser.Physics.Arcade.Image;
-                if (enemy) {
-                    enemy.setActive(true);
-                    enemy.setVisible(true);
-                    enemy.setScale(OBJECT_SCALE);
-                    enemy.setData("kind", enemyData.kind);
-                    enemy.setData("health", enemyData.health);
-                    enemy.setData("syncId", index);
-                }
-            }
-
-            if (enemy) {
-                enemy.x = Phaser.Math.Linear(enemy.x, enemyData.x, 0.5);
-                enemy.y = Phaser.Math.Linear(enemy.y, enemyData.y, 0.5);
-                enemy.setData("health", enemyData.health);
-            }
-        });
-
-        // Deactivate enemies that host no longer has
-        activeEnemies.forEach((enemy, index) => {
-            if (
-                index >= latestGameState.enemies.length ||
-                !latestGameState.enemies[index]?.active
-            ) {
-                enemy.setActive(false);
-                enemy.setVisible(false);
-            }
-        });
-
-        // Apply enemy bullet positions - spawn if needed
-        const activeBullets = this.enemyBullets
-            .getChildren()
-            .filter((b: any) => b.active) as Phaser.Physics.Arcade.Image[];
-
-        latestGameState.bullets.forEach((bulletData, index) => {
-            let bullet = activeBullets[index];
-            if (!bullet) {
-                // Spawn a new bullet for the guest
-                bullet = this.enemyBullets.get(
-                    bulletData.x,
-                    bulletData.y,
-                    "enemy-bullet"
-                ) as Phaser.Physics.Arcade.Image;
-                if (bullet) {
-                    bullet.setActive(true);
-                    bullet.setVisible(true);
-                    bullet.setScale(OBJECT_SCALE);
-                }
-            }
-
-            if (bullet) {
-                bullet.x = bulletData.x;
-                bullet.y = bulletData.y;
-                const body = bullet.body as Phaser.Physics.Arcade.Body;
-                if (body) {
-                    body.setVelocity(bulletData.vx, bulletData.vy);
-                }
-            }
-        });
-
-        // Deactivate bullets that host no longer has
-        activeBullets.forEach((bullet, index) => {
-            if (index >= latestGameState.bullets.length) {
-                bullet.setActive(false);
-                bullet.setVisible(false);
-            }
-        });
-
-        // Apply player bullet positions - sync from host
-        if (latestGameState.playerBullets) {
-            const activePlayerBullets = this.bullets
-                .getChildren()
-                .filter((b: any) => b.active) as Phaser.Physics.Arcade.Image[];
-
-            latestGameState.playerBullets.forEach((bulletData, index) => {
-                let bullet = activePlayerBullets[index];
-                if (!bullet) {
-                    // Spawn a new player bullet for the guest
-                    bullet = this.bullets.get(
-                        bulletData.x,
-                        bulletData.y,
-                        "bullet"
-                    ) as Phaser.Physics.Arcade.Image;
-                    if (bullet) {
-                        bullet.setActive(true);
-                        bullet.setVisible(true);
-                        bullet.setScale(OBJECT_SCALE);
-                    }
-                }
-
-                if (bullet) {
-                    bullet.x = bulletData.x;
-                    bullet.y = bulletData.y;
-                    bullet.rotation = bulletData.rotation;
-                    const body = bullet.body as Phaser.Physics.Arcade.Body;
-                    if (body) {
-                        body.setVelocity(bulletData.vx, bulletData.vy);
-                    }
-                }
-            });
-
-            // Deactivate player bullets that host no longer has
-            activePlayerBullets.forEach((bullet, index) => {
-                if (index >= (latestGameState.playerBullets?.length ?? 0)) {
-                    bullet.setActive(false);
-                    bullet.setVisible(false);
-                }
-            });
-        }
+        // Apply player bullet positions with prediction
+        this.applyPlayerBulletStateWithPrediction(latestGameState);
 
         // Apply countdown/intermission state
         const runActions = useRunStore.getState().actions;
@@ -1163,7 +1078,6 @@ export class MainScene extends Phaser.Scene {
             !latestGameState.intermissionActive &&
             this.intermissionActive
         ) {
-            // Intermission ended on host, clear it on guest
             runActions.setWaveCountdown(null, null);
             this.intermissionActive = false;
             this.pendingWaveIndex = null;
@@ -1174,6 +1088,250 @@ export class MainScene extends Phaser.Scene {
             this.waveIndex = latestGameState.wave;
             runActions.setWave(latestGameState.wave);
         }
+    }
+
+    /** Apply enemy state with smooth interpolation */
+    private applyEnemyStateWithInterpolation(
+        gameState: GameStateSync,
+        deltaTime: number
+    ): void {
+        // Build a map of current enemies by sync ID
+        const enemyMap = new Map<number, Phaser.Physics.Arcade.Image>();
+        (this.enemies.getChildren() as Phaser.Physics.Arcade.Image[]).forEach(
+            (enemy) => {
+                if (enemy.active) {
+                    const syncId = enemy.getData("syncId") as
+                        | number
+                        | undefined;
+                    if (syncId !== undefined) {
+                        enemyMap.set(syncId, enemy);
+                    }
+                }
+            }
+        );
+
+        const receivedEnemyIds = new Set<number>();
+
+        // Update or spawn enemies
+        gameState.enemies.forEach((enemyData) => {
+            if (!enemyData.active) return;
+            receivedEnemyIds.add(enemyData.id);
+
+            let enemy = enemyMap.get(enemyData.id);
+
+            if (!enemy) {
+                // Spawn new enemy
+                const textureKey = enemyData.kind;
+                enemy = this.enemies.get(
+                    enemyData.x,
+                    enemyData.y,
+                    textureKey
+                ) as Phaser.Physics.Arcade.Image;
+
+                if (enemy) {
+                    enemy.setActive(true);
+                    enemy.setVisible(true);
+                    enemy.setScale(OBJECT_SCALE);
+                    enemy.setData("kind", enemyData.kind);
+                    enemy.setData("health", enemyData.health);
+                    enemy.setData("syncId", enemyData.id);
+                    enemyMap.set(enemyData.id, enemy);
+                }
+            }
+
+            if (enemy) {
+                // Update interpolator target
+                const entityId = `enemy-${enemyData.id}`;
+                this.enemyInterpolator.updateTarget(
+                    entityId,
+                    enemyData.x,
+                    enemyData.y
+                );
+
+                // Get interpolated position
+                const interpolated = this.enemyInterpolator.getPosition(
+                    entityId,
+                    deltaTime
+                );
+                if (interpolated) {
+                    enemy.x = interpolated.x;
+                    enemy.y = interpolated.y;
+                }
+
+                enemy.setData("health", enemyData.health);
+            }
+        });
+
+        // Deactivate enemies that host no longer has
+        enemyMap.forEach((enemy, id) => {
+            if (!receivedEnemyIds.has(id)) {
+                enemy.setActive(false);
+                enemy.setVisible(false);
+                this.enemyInterpolator.remove(`enemy-${id}`);
+            }
+        });
+    }
+
+    /** Apply bullet state with velocity-based prediction */
+    private applyBulletStateWithPrediction(gameState: GameStateSync): void {
+        const bulletMap = new Map<number, Phaser.Physics.Arcade.Image>();
+        (
+            this.enemyBullets.getChildren() as Phaser.Physics.Arcade.Image[]
+        ).forEach((bullet) => {
+            if (bullet.active) {
+                const syncId = bullet.getData("syncId") as number | undefined;
+                if (syncId !== undefined) {
+                    bulletMap.set(syncId, bullet);
+                }
+            }
+        });
+
+        const receivedBulletIds = new Set<number>();
+
+        gameState.bullets.forEach((bulletData) => {
+            receivedBulletIds.add(bulletData.id);
+
+            // Update predictor with latest data
+            this.enemyBulletPredictor.update(
+                bulletData.id,
+                bulletData.x,
+                bulletData.y,
+                bulletData.vx,
+                bulletData.vy
+            );
+
+            let bullet = bulletMap.get(bulletData.id);
+
+            if (!bullet) {
+                // Spawn new bullet
+                bullet = this.enemyBullets.get(
+                    bulletData.x,
+                    bulletData.y,
+                    "enemy-bullet"
+                ) as Phaser.Physics.Arcade.Image;
+
+                if (bullet) {
+                    bullet.setActive(true);
+                    bullet.setVisible(true);
+                    bullet.setScale(OBJECT_SCALE);
+                    bullet.setData("syncId", bulletData.id);
+                    bulletMap.set(bulletData.id, bullet);
+                }
+            }
+
+            if (bullet) {
+                // Get predicted position
+                const predicted = this.enemyBulletPredictor.getPosition(
+                    bulletData.id
+                );
+                if (predicted) {
+                    bullet.x = predicted.x;
+                    bullet.y = predicted.y;
+                }
+
+                // Set velocity for physics-based movement between updates
+                const body = bullet.body as Phaser.Physics.Arcade.Body;
+                if (body) {
+                    body.setVelocity(bulletData.vx, bulletData.vy);
+                }
+            }
+        });
+
+        // Deactivate bullets that host no longer has
+        bulletMap.forEach((bullet, id) => {
+            if (!receivedBulletIds.has(id)) {
+                bullet.setActive(false);
+                bullet.setVisible(false);
+                this.enemyBulletPredictor.remove(id);
+            }
+        });
+    }
+
+    /** Apply player bullet state with velocity-based prediction */
+    private applyPlayerBulletStateWithPrediction(
+        gameState: GameStateSync
+    ): void {
+        if (!gameState.playerBullets) return;
+
+        // Reconcile optimistic bullets first
+        this.reconcileOptimisticBullets();
+
+        const bulletMap = new Map<number, Phaser.Physics.Arcade.Image>();
+        (this.bullets.getChildren() as Phaser.Physics.Arcade.Image[]).forEach(
+            (bullet) => {
+                if (bullet.active) {
+                    const syncId = bullet.getData("syncId") as
+                        | number
+                        | undefined;
+                    // Skip optimistic bullets (negative IDs)
+                    if (syncId !== undefined && syncId >= 0) {
+                        bulletMap.set(syncId, bullet);
+                    }
+                }
+            }
+        );
+
+        const receivedBulletIds = new Set<number>();
+
+        gameState.playerBullets.forEach((bulletData) => {
+            receivedBulletIds.add(bulletData.id);
+
+            // Update predictor
+            this.playerBulletPredictor.update(
+                bulletData.id,
+                bulletData.x,
+                bulletData.y,
+                bulletData.vx,
+                bulletData.vy
+            );
+
+            let bullet = bulletMap.get(bulletData.id);
+
+            if (!bullet) {
+                // Spawn new bullet
+                bullet = this.bullets.get(
+                    bulletData.x,
+                    bulletData.y,
+                    "bullet"
+                ) as Phaser.Physics.Arcade.Image;
+
+                if (bullet) {
+                    bullet.setActive(true);
+                    bullet.setVisible(true);
+                    bullet.setScale(OBJECT_SCALE);
+                    bullet.setData("syncId", bulletData.id);
+                    bullet.setData("optimistic", false); // Mark as confirmed
+                    bulletMap.set(bulletData.id, bullet);
+                }
+            }
+
+            if (bullet) {
+                // Get predicted position
+                const predicted = this.playerBulletPredictor.getPosition(
+                    bulletData.id
+                );
+                if (predicted) {
+                    bullet.x = predicted.x;
+                    bullet.y = predicted.y;
+                }
+
+                bullet.rotation = bulletData.rotation;
+
+                const body = bullet.body as Phaser.Physics.Arcade.Body;
+                if (body) {
+                    body.setVelocity(bulletData.vx, bulletData.vy);
+                }
+            }
+        });
+
+        // Deactivate bullets that host no longer has
+        bulletMap.forEach((bullet, id) => {
+            if (!receivedBulletIds.has(id)) {
+                bullet.setActive(false);
+                bullet.setVisible(false);
+                this.playerBulletPredictor.remove(id);
+            }
+        });
     }
 
     private lastBroadcastTime = 0;
@@ -1196,7 +1354,9 @@ export class MainScene extends Phaser.Scene {
     }
 
     private lastGuestShotTime = 0;
-    private readonly GUEST_SHOT_COOLDOWN = 250; // ms between shots for guest
+    private readonly GUEST_SHOT_COOLDOWN = 200; // Reduced from 250ms for snappier feel
+    private optimisticBulletIds: Set<number> = new Set(); // Track locally spawned bullets
+    private nextOptimisticBulletId = -1; // Negative IDs for optimistic bullets
 
     private handleGuestShooting(
         pilot: PilotRuntime,
@@ -1225,8 +1385,81 @@ export class MainScene extends Phaser.Scene {
             timestamp: now,
         });
 
+        // OPTIMISTIC: Spawn bullet locally for instant feedback
+        // This bullet will be reconciled when host confirms
+        this.spawnOptimisticBullet(pilot.sprite.x, pilot.sprite.y, dir);
+
         // Play sound locally for feedback
         soundManager.playSfx("shoot");
+    }
+
+    /** Spawn a local bullet for instant feedback (guest-side) */
+    private spawnOptimisticBullet(
+        x: number,
+        y: number,
+        dir: Phaser.Math.Vector2
+    ): void {
+        const bullet = this.bullets.get(
+            x,
+            y,
+            "bullet"
+        ) as Phaser.Physics.Arcade.Image;
+        if (!bullet) return;
+
+        bullet.setActive(true);
+        bullet.setVisible(true);
+        bullet.setScale(OBJECT_SCALE);
+        bullet.rotation = Math.atan2(dir.y, dir.x);
+
+        // Use negative ID to mark as optimistic
+        const optimisticId = this.nextOptimisticBulletId--;
+        bullet.setData("syncId", optimisticId);
+        bullet.setData("optimistic", true);
+        bullet.setData("spawnTime", performance.now());
+        this.optimisticBulletIds.add(optimisticId);
+
+        // Set velocity based on player stats
+        const speed = this.playerStats.projectileSpeed;
+        const body = bullet.body as Phaser.Physics.Arcade.Body;
+        if (body) {
+            body.setVelocity(dir.x * speed, dir.y * speed);
+        }
+
+        // Set damage for collision handling
+        bullet.setData("damage", this.playerStats.damage);
+        bullet.setData("pierce", this.playerStats.pierce);
+        bullet.setData("bounce", this.playerStats.bounce);
+        bullet.setData("tags", []);
+
+        // Auto-cleanup optimistic bullets after a timeout (in case host never confirms)
+        this.time.delayedCall(500, () => {
+            if (bullet.active && bullet.getData("optimistic")) {
+                bullet.setActive(false);
+                bullet.setVisible(false);
+                this.optimisticBulletIds.delete(optimisticId);
+            }
+        });
+    }
+
+    /** Clean up optimistic bullets when host state arrives (called from applyPlayerBulletStateWithPrediction) */
+    private reconcileOptimisticBullets(): void {
+        // Remove old optimistic bullets that have been superseded by host state
+        const now = performance.now();
+        const maxAge = 300; // ms - optimistic bullets older than this are stale
+
+        (this.bullets.getChildren() as Phaser.Physics.Arcade.Image[]).forEach(
+            (bullet) => {
+                if (bullet.active && bullet.getData("optimistic")) {
+                    const spawnTime = bullet.getData("spawnTime") as number;
+                    if (now - spawnTime > maxAge) {
+                        bullet.setActive(false);
+                        bullet.setVisible(false);
+                        const id = bullet.getData("syncId") as number;
+                        this.optimisticBulletIds.delete(id);
+                    }
+                }
+            }
+        );
     }
 
     setupGuestBulletHandler() {
@@ -1446,6 +1679,15 @@ export class MainScene extends Phaser.Scene {
         this.lastCountdownBroadcast = 0;
         this.runActive = false;
         this.elapsedAccumulator = 0;
+
+        // Clear network interpolators for fresh state
+        this.enemyInterpolator.clear();
+        this.enemyBulletPredictor.clear();
+        this.playerBulletPredictor.clear();
+        this.hostPlayerInterpolator.clear();
+        this.lastNetworkUpdateTime = 0;
+        this.optimisticBulletIds.clear();
+        this.nextOptimisticBulletId = -1;
 
         // Clean up visual effects before clearing pools
         this.cleanupVisualEffects();
