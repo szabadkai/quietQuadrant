@@ -4612,54 +4612,65 @@ export class MainScene extends Phaser.Scene {
     }
 
     private computeWaveScaling(index: number) {
-        // Enhanced wave scaling to account for typical upgrade progression
-        // Requirements 1.2, 1.3, 5.1, 5.2, 5.3, 5.4, 5.5
+        // Enhanced wave scaling with unlock-based difficulty progression
+        // New players start easier, difficulty scales with collection progress
 
         const overflow =
             this.infiniteMode && index >= WAVES.length
                 ? index - (WAVES.length - 1)
                 : 0;
 
-        // Progressive scaling for standard waves (0-9) to challenge upgrade builds
+        // Calculate unlock-based difficulty modifier (0.85 to 1.15)
+        // More unlocks = harder game, but starts easier for new players
+        const cardCollection = useMetaStore.getState().cardCollection;
+        const totalUpgrades = UPGRADE_CATALOG.length;
+        const unlockedCount = cardCollection.unlockedUpgrades.length;
+        const unlockProgress = unlockedCount / totalUpgrades; // 0 to 1
+        // Start at 0.85x difficulty, scale up to 1.15x as you unlock everything
+        const unlockDifficultyMod = 0.85 + unlockProgress * 0.3;
+
+        // Progressive scaling for standard waves (0-9) - SOFTENED
         let baseHealthMultiplier = 1;
         let baseSpeedMultiplier = 1;
         let baseCountMultiplier = 1;
 
         if (index < WAVES.length) {
-            // Early waves (0-2): Minimal scaling to allow power spike enjoyment
-            if (index <= 2) {
-                baseHealthMultiplier = 1 + index * 0.1; // 1.0, 1.1, 1.2
-                baseSpeedMultiplier = 1 + index * 0.05; // 1.0, 1.05, 1.1
+            // Early waves (0-3): Very gentle scaling for new players
+            if (index <= 3) {
+                baseHealthMultiplier = 1 + index * 0.05; // 1.0, 1.05, 1.1, 1.15
+                baseSpeedMultiplier = 1 + index * 0.03; // 1.0, 1.03, 1.06, 1.09
                 baseCountMultiplier = 1;
             }
-            // Mid-game waves (3-6): Moderate scaling to challenge typical upgrade builds
+            // Mid-game waves (4-6): Moderate scaling
             else if (index <= 6) {
-                const midProgress = (index - 3) / 3; // 0 to 1 over waves 3-6
-                baseHealthMultiplier = 1.2 + midProgress * 0.6; // 1.2 to 1.8
-                baseSpeedMultiplier = 1.1 + midProgress * 0.3; // 1.1 to 1.4
-                baseCountMultiplier = 1 + midProgress * 0.2; // 1.0 to 1.2
+                const midProgress = (index - 4) / 2; // 0 to 1 over waves 4-6
+                baseHealthMultiplier = 1.15 + midProgress * 0.35; // 1.15 to 1.5
+                baseSpeedMultiplier = 1.09 + midProgress * 0.16; // 1.09 to 1.25
+                baseCountMultiplier = 1 + midProgress * 0.1; // 1.0 to 1.1
             }
-            // Late waves (7-9): Aggressive scaling for optimized builds
+            // Late waves (7-9): Challenging but fair scaling
             else {
                 const lateProgress = (index - 7) / 2; // 0 to 1 over waves 7-9
-                baseHealthMultiplier = 1.8 + lateProgress * 0.7; // 1.8 to 2.5
-                baseSpeedMultiplier = 1.4 + lateProgress * 0.4; // 1.4 to 1.8
-                baseCountMultiplier = 1.2 + lateProgress * 0.3; // 1.2 to 1.5
+                baseHealthMultiplier = 1.5 + lateProgress * 0.4; // 1.5 to 1.9
+                baseSpeedMultiplier = 1.25 + lateProgress * 0.2; // 1.25 to 1.45
+                baseCountMultiplier = 1.1 + lateProgress * 0.15; // 1.1 to 1.25
             }
         }
 
-        // Apply base difficulty and infinite mode overflow scaling
+        // Apply base difficulty, unlock modifier, and infinite mode overflow scaling
         const speedAndFire =
             this.baseDifficulty *
             baseSpeedMultiplier *
-            (overflow > 0 ? 1 + overflow * 0.25 : 1);
+            unlockDifficultyMod *
+            (overflow > 0 ? 1 + overflow * 0.2 : 1); // Reduced overflow scaling
         const healthScale =
             this.baseDifficulty *
             baseHealthMultiplier *
-            (overflow > 0 ? 1.2 ** overflow : 1);
+            unlockDifficultyMod *
+            (overflow > 0 ? 1.15 ** overflow : 1); // Reduced from 1.2
         const countScale =
             baseCountMultiplier *
-            (overflow > 0 ? 1 + overflow * 0.4 : 1) *
+            (overflow > 0 ? 1 + overflow * 0.3 : 1) * // Reduced from 0.4
             this.modeEnemyCountMultiplier;
 
         return { speedAndFire, healthScale, countScale };
