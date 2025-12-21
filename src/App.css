@@ -2772,7 +2772,7 @@ button.tiny {
 }
 
 .card-reward-card.unlock .card-action-badge {
-	background: rgba(120, 243, 255, 0.15);
+	background: rgb(0, 50, 55);
 }
 
 .card-reward-card.legendary .card-action-badge {
