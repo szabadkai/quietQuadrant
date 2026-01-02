@@ -2036,6 +2036,95 @@ button.tiny {
 	color: var(--vector-ink-soft);
 }
 
+/* New version banner */
+.version-banner {
+	position: absolute;
+	top: 18px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	flex-wrap: nowrap;
+	white-space: nowrap;
+	padding: 16px 20px;
+	background:
+		linear-gradient(135deg, rgba(16, 36, 58, 0.95), rgba(6, 12, 22, 0.92)),
+		linear-gradient(90deg, rgba(122, 243, 255, 0.18), rgba(245, 211, 107, 0.16));
+	border: 2px solid rgba(122, 243, 255, 0.7);
+	border-radius: 8px;
+	box-shadow:
+		0 0 22px rgba(120, 243, 255, 0.35),
+		inset 0 0 0 1px rgba(120, 243, 255, 0.12);
+	color: var(--vector-ink-strong);
+	font-size: 14px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	z-index: 2;
+}
+
+.version-banner::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: 0;
+	bottom: 0;
+	width: 6px;
+	border-radius: 8px 0 0 8px;
+	background: linear-gradient(180deg, #7af3ff, #f5d36b);
+	box-shadow: 0 0 12px rgba(245, 211, 107, 0.5);
+}
+
+.version-banner span {
+	padding-left: 6px;
+}
+
+.version-banner a {
+	color: #f5d36b;
+	text-decoration: none;
+	border-bottom: 1px solid rgba(245, 211, 107, 0.6);
+}
+
+.version-banner a:hover {
+	color: var(--vector-ink-strong);
+	border-bottom-color: rgba(120, 243, 255, 0.9);
+}
+
+.version-banner-close {
+	background: transparent;
+	border: 2px solid rgba(245, 211, 107, 0.6);
+	color: var(--vector-ink-strong);
+	padding: 6px 10px;
+	border-radius: 6px;
+	font-size: 12px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	cursor: pointer;
+}
+
+.version-banner-close:hover {
+	border-color: rgba(122, 243, 255, 0.8);
+}
+
+@media (max-width: 720px) {
+	.version-banner {
+		width: min(96vw, 560px);
+		gap: 10px;
+		padding: 12px 14px;
+		font-size: 12px;
+		letter-spacing: 0.03em;
+	}
+}
+
+@media (max-width: 520px) {
+	.version-banner {
+		font-size: 11px;
+		gap: 8px;
+		padding: 10px 12px;
+	}
+}
+
 /* Scrollbar styling for panels */
 .panel::-webkit-scrollbar,
 .leaderboard-list::-webkit-scrollbar,

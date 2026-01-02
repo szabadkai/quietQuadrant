@@ -1,0 +1,31 @@
+id,name,description,rarity,category,maxStacks,dropWeight,effect_type,effect_value,effect_secondary,diminishing_after
+power-shot,Power Shot,+15% damage and +5% crit chance,common,offense,6,1.1,damage,0.15,critChance:0.05,4
+rapid-fire,Rapid Fire,+15% fire rate,common,offense,6,1.1,fireRate,0.15,,4
+swift-projectiles,Swift Projectiles,+20% projectile speed,common,offense,6,1.0,projectileSpeed,0.20,,
+engine-tune,Engine Tune,+10% movement speed,common,utility,6,1.0,moveSpeed,0.10,,
+plating,Light Plating,+1 max HP and -8% incoming damage,common,defense,4,0.9,maxHealth,1,damageReduction:0.08,3
+sidecar,Sidecar Shot,+1 extra projectile with slight spread,common,offense,3,1.0,projectileCount,1,spread:5,
+pierce,Piercing Rounds,Projectiles pierce +1 additional target,common,offense,3,1.0,pierce,1,,
+heavy-barrel,Heavy Barrel,+25% size +20% damage +5% crit damage -10% fire rate,common,offense,3,0.9,damage,0.20,size:0.25;critDamage:0.05;fireRate:-0.10,2
+rebound,Rebound,+2 ricochets -5% projectile speed per stack,common,offense,3,0.9,ricochet,2,projectileSpeed:-0.05,
+dash-sparks,Dash Sparks,Dashing detonates close-range shrapnel burst,common,utility,3,1.0,special,dash_sparks,shrapnelCount:8,
+held-charge,Held Charge,Hold fire to charge +80% damage; pierces 3 foes,common,offense,3,1.0,special,held_charge,chargeDamage:0.80;chargePierce:3,
+shield-pickup,XP Shield,Collecting XP grants 1-hit shield for 2s,common,defense,3,1.0,special,xp_shield,duration:2;cooldown:5,
+magnet-coil,Magnet Coil,XP pulls from farther and moves faster,common,utility,3,1.0,magnetRadius,0.50,,
+stabilizers,Stabilizers,Reduce collision damage and knockback,common,defense,3,0.9,collisionReduction,0.25,,
+shrapnel,Shrapnel,Enemies destroyed spray forward cone of fragments,rare,offense,2,0.85,special,shrapnel,fragmentCount:5;fragmentDamage:0.3,
+kinetic-siphon,Kinetic Siphon,On kill heal small amount with cooldown,common,defense,3,0.9,special,lifesteal,healAmount:1;cooldown:3,
+prism-spread,Prism Spread,Tightens multi-shot spread and adds crit chance,rare,offense,2,0.8,spreadReduction,0.50,critChance:0.05,
+momentum-feed,Momentum Feed,Moving builds up to +25% fire rate,rare,utility,2,0.9,special,momentum,maxBonus:0.25;buildRate:0.05,
+split-shot,Split Shot,First hit splits into two shards for 50% damage,rare,offense,2,0.9,special,split_shot,shardCount:2;shardDamage:0.5,
+explosive-impact,Explosive Impact,Projectiles explode on hit for area damage,rare,offense,3,1.0,special,explosive,radius:40;aoeDamage:0.5,
+chain-arc,Chain Arc,On kill arc lightning to nearest enemy,rare,offense,2,0.85,special,chain_lightning,arcDamage:0.4;arcRange:100,
+heatseeker,Heatseeker Rounds,Projectiles gently home toward nearby enemies,rare,offense,3,0.85,special,homing,homingStrength:0.15;homingRange:150,
+blood-fuel,Blood Fuel,Killing enemies heals; firing costs 2% current HP,rare,offense,1,0.5,special,blood_fuel,healOnKill:1;fireCost:0.02,
+chain-reaction,Volatile Compounds,Enemies explode on death for 50% max HP in small radius,rare,offense,5,0.8,special,death_explosion,explosionDamage:0.5;explosionRadius:50,
+quantum-tunneling,Quantum Tunneling,Projectiles travel through walls and obstacles,rare,utility,1,0.6,special,phase_through,,
+berserk-module,Berserk Module,Lower health means faster fire rate up to +100%,rare,offense,3,0.9,special,berserk,maxBonus:1.0,
+neutron-core,Neutron Core,Heavy spheres block enemy shots but -40% projectile speed,legendary,defense,1,1.0,special,neutron_core,projectileSpeed:-0.40;blockShots:true,
+glass-cannon,Glass Cannon,+150% damage +8% crit but max HP capped at 1,legendary,offense,1,0.8,damage,1.50,critChance:0.08;maxHealth:1,
+singularity-rounds,Singularity Rounds,Projectiles pull enemies into impact point,legendary,utility,1,1.0,special,singularity,pullStrength:200;pullRadius:80,
+bullet-hell,Bullet Hell,+200% fire rate -80% accuracy -30% damage,legendary,offense,1,1.0,fireRate,2.0,accuracy:-0.80;damage:-0.30,

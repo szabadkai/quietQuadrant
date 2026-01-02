@@ -1,0 +1,8 @@
+id,name,health,speed,damage,xp,size,behavior,fireCooldown,projectileSpeed,elite_healthMult,elite_speedMult,elite_damageMult,elite_behaviors,description
+drifter,Drifter,22,100,1,10,16,chase,,,,1.7,1.25,1.2,burst_movement,Simple chaser that accelerates toward player
+watcher,Watcher,35,65,1,25,20,ranged,1.8,145,1.7,1.25,1.2,rapid_fire,Maintains distance and fires aimed projectiles
+mass,Mass,85,40,2,50,32,burst,2.8,110,1.7,1.25,1.2,burst_movement;death_explosion,Slow tank with radial burst attacks
+phantom,Phantom,18,80,1,20,16,teleport,,,,1.7,1.25,1.2,burst_movement,Teleports unpredictably near player
+orbiter,Orbiter,28,120,1,30,18,orbit,2.2,130,1.7,1.25,1.2,rapid_fire,Circles player while shooting
+splitter,Splitter,50,55,1,35,24,split,,,,1.7,1.25,1.2,death_explosion,Splits into smaller versions on death
+boss,Boss,800,55,1,500,64,boss,1.0,220,1.0,1.0,1.0,,End-wave boss with multiple attack patterns

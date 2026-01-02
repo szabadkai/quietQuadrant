@@ -1,0 +1,19 @@
+stat,base_value,unit,description
+moveSpeed,240,px/s,Base movement speed
+damage,12,hp,Base damage per projectile
+fireRate,4,shots/s,Base shots per second
+projectileSpeed,520,px/s,Base bullet velocity
+projectiles,1,count,Base projectile count per shot
+pierce,0,count,Base pierce (0 = bullet dies on first hit)
+bounce,0,count,Base ricochet count
+maxHealth,5,hp,Base maximum health
+health,5,hp,Starting health (equals maxHealth)
+critChance,0.05,percent,Base critical hit chance (5%)
+critDamage,1.5,multiplier,Critical hit damage multiplier
+dashCooldownMs,1600,ms,Dash ability cooldown
+dashDurationMs,220,ms,Dash invulnerability duration
+invulnAfterHitMs,500,ms,Invulnerability frames after taking damage
+size,24,px,Collision box size
+magnetRadius,80,px,Base XP pickup radius
+accuracy,1.0,percent,Base accuracy (1.0 = perfect)
+damageReduction,0,percent,Base damage reduction (0%)

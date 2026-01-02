@@ -1,0 +1,13 @@
+id,name,description,requires,bonus_type,bonus_value
+black-hole-sun,Black Hole Sun,Singularity clumps enemies then chain reactions erase the pack,singularity-rounds;chain-reaction,chainDamage,0.25
+railgun,Railgun,Charged shots pierce everything after phasing through walls,held-charge;quantum-tunneling;swift-projectiles,critChance;critDamage,0.05;0.25
+meat-grinder,Meat Grinder,Heavy neutron spheres become bullet-plow with shrapnel,neutron-core;shrapnel,critChance;critDamage,0.03;0.15
+frame-rate-killer,Frame Rate Killer,Bullet Hell plus rebounds and splits flood the arena,bullet-hell;rebound;split-shot,none,
+vampire,Vampire,Blood Fuel feeds Berserk frenzy with predatory crits,blood-fuel;berserk-module,critChance,0.03
+tesla-coil,Tesla Coil,Chain lightning arcs through explosive impacts,chain-arc;explosive-impact,arcDamage,0.15
+glass-storm,Glass Storm,Glass Cannon with Bullet Hell creates deadly spray,glass-cannon;bullet-hell,accuracyPenaltyReduction,0.50
+phantom-striker,Phantom Striker,Dash sparks and shrapnel tear enemies apart,dash-sparks;shrapnel,dashCooldown,-0.25
+gravity-well,Gravity Well,Singularity pulls enemies into explosive detonations,singularity-rounds;explosive-impact,explosionRadius,0.30
+sniper-elite,Sniper Elite,Charged heatseeker rounds never miss their mark,held-charge;heatseeker,homingStrengthOnCharge;critDamage,2.0;0.10
+immortal-engine,Immortal Engine,XP shields combined with kinetic healing,shield-pickup;kinetic-siphon,shieldDuration,0.50
+prism-cannon,Prism Cannon,Tight prism spread with heavy barrel creates focused beam,prism-spread;heavy-barrel;sidecar,critChance,0.08

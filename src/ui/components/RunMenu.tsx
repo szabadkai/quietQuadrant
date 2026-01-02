@@ -4,6 +4,7 @@ import { gameManager } from "../../game/GameManager";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
 import { useMenuNavigation } from "../input/useMenuNavigation";
+import { NewVersionBanner } from "./NewVersionBanner";
 
 export const RunMenu = () => {
 	const runMenuOpen = useUIStore((s) => s.runMenuOpen);
@@ -44,6 +45,7 @@ export const RunMenu = () => {
 
 	return (
 		<div className="overlay run-menu">
+			<NewVersionBanner />
 			<div className="panel run-panel">
 				<div className="panel-header">Run Status</div>
 				<div className="run-level">Level {playerLevel}</div>

@@ -5,6 +5,7 @@ import { gameManager } from "../../game/GameManager";
 import { useMetaStore } from "../../state/useMetaStore";
 import { useUIStore } from "../../state/useUIStore";
 import { useMenuNavigation } from "../input/useMenuNavigation";
+import { NewVersionBanner } from "./NewVersionBanner";
 
 export const TitleScreen = () => {
 	const { setScreen } = useUIStore((s) => s.actions);
@@ -68,6 +69,7 @@ export const TitleScreen = () => {
 
 	return (
 		<div className="overlay title-screen">
+			<NewVersionBanner />
 			<span className="build-version">v{buildVersion}</span>
 			<div className="panel hero">
 				<div className="eyebrow">Quiet Quadrant</div>

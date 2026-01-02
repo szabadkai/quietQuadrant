@@ -1,0 +1,4 @@
+id,name,description,base_health,healthMult,speedMult,fireRateMult,projectileSpeedMult,patterns,phase1_patterns,phase2_patterns,phase3_patterns
+sentinel,Sentinel Core,Tracks player and alternates beam spins with aimed bursts,800,1.4,1.1,1.0,1.0,beam-spin;aimed-burst;ring-with-gap,beam-spin;aimed-burst,beam-spin;aimed-burst;ring-with-gap,all patterns faster
+swarm-core,Swarm Core,Spawns escort minions and fires cone volleys,800,1.3,1.15,1.1,1.0,summon-minions;cone-volley;pulse-ring,summon-minions;cone-volley,summon-minions;cone-volley;pulse-ring,constant spawns all patterns
+obelisk,Obelisk,Telegraphs slams and ricochets shards with lane beams,800,1.5,1.0,1.0,1.15,slam;ricochet-shards;lane-beams,slam;ricochet-shards,slam;ricochet-shards;lane-beams,overlapping patterns faster slams

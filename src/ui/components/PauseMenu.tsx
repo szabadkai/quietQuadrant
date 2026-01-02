@@ -4,6 +4,7 @@ import { useMetaStore } from "../../state/useMetaStore";
 import { useRunStore } from "../../state/useRunStore";
 import { useUIStore } from "../../state/useUIStore";
 import { useMenuNavigation } from "../input/useMenuNavigation";
+import { NewVersionBanner } from "./NewVersionBanner";
 
 export const PauseMenu = () => {
 	const pauseOpen = useUIStore((s) => s.pauseMenuOpen);
@@ -92,6 +93,7 @@ export const PauseMenu = () => {
 
 	return (
 		<div className="overlay pause-menu">
+			<NewVersionBanner />
 			<div className="panel pause-panel">
 				<div className="panel-header">Paused</div>
 
